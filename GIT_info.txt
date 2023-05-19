@@ -1,0 +1,12 @@
+ sobre la carpeta del tp
+elegir comando git bash here (clickderecho)
+git add .    (con esto agrego los cambios)
+git commit -m "cambio realizadoXXXX"
+git push
+
+para volver para atra y deshacer el comando..deshace todos los cambios hasta el ultimo commit
+git stash
+
+
+traer cambios..
+git pull
