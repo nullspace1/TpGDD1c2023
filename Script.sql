@@ -249,7 +249,7 @@ FOREIGN KEY (pedido_id) REFERENCES ESECUELE.pedido(id_pedido)
 CREATE TABLE ESECUELE.PRODUCTO(
 id_producto INT IDENTITY(1,1) NOT NULL ,
 local_id INT,
-codigo INT,
+codigo NVARCHAR(255),
 nombre NVARCHAR(255),
 descripcion NVARCHAR(255),
 precio_unitaro DECIMAL(18,2),
@@ -397,9 +397,10 @@ BEGIN
 	-- Creamos las Provincias --
 	INSERT INTO ESECUELE.PROVINCIA (nombre)
 		SELECT DISTINCT
-		##LOCALIDAD_PROVINCIA.PROVINCIA
+		##LOCALIDAD_PROVINCIA.PROVINCIA 
 		FROM
 		##LOCALIDAD_PROVINCIA
+		WHERE ##LOCALIDAD_PROVINCIA.PROVINCIA is not null 
 
 	-- Creamos las Localidades --
 	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
@@ -483,6 +484,8 @@ BEGIN
 		M.LOCAL_TIPO
 		FROM
 		gd_esquema.Maestra M
+		WHERE
+		M.LOCAL_TIPO is not null
 
 
 	-- Insertamos los locales propios --
@@ -692,16 +695,19 @@ BEGIN
 
 	-- Creamos los productos para cada pedido --
 	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
-		SELECT DISTINCT
-		PR.id_producto,
-		PE.id_pedido,
-		M.PRODUCTO_CANTIDAD,
-		M.PRODUCTO_LOCAL_PRECIO,
-		M.PRODUCTO_CANTIDAD * M.PRODUCTO_LOCAL_PRECIO
-		FROM
-		gd_esquema.Maestra M
-		JOIN ESECUELE.PRODUCTO PR ON PR.codigo = M.PRODUCTO_LOCAL_CODIGO
-		JOIN ESECUELE.PEDIDO PE ON M.PEDIDO_NRO = PE.id_pedido
+	SELECT DISTINCT
+			PR.id_producto,
+			PE.id_pedido,
+			SUM(M.PRODUCTO_CANTIDAD),
+			SUM(M.PRODUCTO_LOCAL_PRECIO),
+			SUM(M.PRODUCTO_CANTIDAD * M.PRODUCTO_LOCAL_PRECIO)
+			FROM
+			gd_esquema.Maestra M
+			JOIN ESECUELE.PRODUCTO PR ON PR.codigo = M.PRODUCTO_LOCAL_CODIGO
+			JOIN ESECUELE.PEDIDO PE ON M.PEDIDO_NRO = PE.id_pedido
+			GROUP BY
+			PR.id_producto,
+			PE.id_pedido
 
 
 END
@@ -743,8 +749,8 @@ BEGIN
 		M.RECLAMO_ESTADO
 		FROM
 		gd_esquema.Maestra M
-		GROUP BY
-		M.RECLAMO_ESTADO
+		WHERE 
+		M.RECLAMO_ESTADO is not null
 
 	-- Creamos los reclamos --
 	INSERT INTO ESECUELE.RECLAMO (id_reclamo,usuario_id,pedido_id,tipo,descr,fecha_hora,operador_id,estado_reclamo_id,solucion,fecha_hora_solucion,calificacion)
@@ -796,7 +802,7 @@ BEGIN
 		M.CUPON_TIPO
 		FROM
 		gd_esquema.Maestra M
-
+		WHERE M.CUPON_TIPO is not null
 
 	-- Agregamos los cupones --
 	INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
@@ -842,8 +848,8 @@ EXECUTE CREAR_LOCALES
 EXECUTE CREAR_REPARTIDORES
 EXECUTE CREAR_ENVIO_MENSAJERIA
 EXECUTE CREAR_OPERADORES
-EXECUTE CREAR_ENVIOS
 EXECUTE CREAR_PEDIDOS
+EXECUTE CREAR_ENVIOS
 EXECUTE CREAR_RECLAMOS
 EXECUTE CREAR_CUPONES
 
