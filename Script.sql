@@ -98,7 +98,7 @@ PRIMARY KEY(id_tipo_cupon)
 );
 
 CREATE TABLE ESECUELE.CUPON(
-id_cupon INT,
+id_cupon INT  NOT NULL,
 usuario_id INT NOT NULL,
 fecha_alta DATE,
 fecha_vencimiento DATE,
@@ -197,8 +197,31 @@ estado NVARCHAR(50),
 PRIMARY KEY(id_estado_pedido)
 );
 
+
+CREATE TABLE ESECUELE.PEDIDO(
+id_pedido INT  NOT NULL ,
+usuario_id int,
+local_id int,
+medio_de_pago_id int,
+observaciones NVARCHAR(255),
+fecha_entrega DATETIME2(3),
+tiempo_estimado_entrega decimal(18,0),
+calificacion NVARCHAR(50),
+total_pedido DECIMAL(18,2),
+total_cupones DECIMAL(18,2),
+estado_pedido_id INT,
+
+
+PRIMARY KEY (id_pedido),
+FOREIGN KEY (local_id) REFERENCES ESECUELE.local(id_local),
+FOREIGN KEY (medio_de_pago_id) REFERENCES ESECUELE.medio_de_pago(id_medio_de_pago),
+FOREIGN KEY (usuario_id) REFERENCES ESECUELE.usuario(id_usuario),
+FOREIGN KEY (estado_pedido_id) REFERENCES ESECUELE.ESTADO_PEDIDO (id_estado_pedido)
+);
+
 CREATE TABLE ESECUELE.ENVIO(
 id_envio INT IDENTITY(1,1) NOT NULL ,
+pedido_id INT,
 fecha_pedido DATETIME2,
 direccion_usuario_id int,
 tarifa_servicio int,
@@ -208,31 +231,10 @@ precio_envio DECIMAL(18,2),
 
 PRIMARY KEY (id_envio),
 FOREIGN KEY (repartidor_id) REFERENCES ESECUELE.repartidor(id_repartidor),
+FOREIGN KEY (pedido_id) REFERENCES ESECUELE.pedido(id_pedido),
 FOREIGN KEY(direccion_usuario_id) REFERENCES ESECUELE.DIRECCION_USUARIO(id_direccion_usuario)
 );
 
-CREATE TABLE ESECUELE.PEDIDO(
-id_pedido INT  NOT NULL ,
-usuario_id int,
-local_id int,
-envio_id int,
-medio_de_pago_id int,
-observaciones NVARCHAR(255),
-fecha_entrega DATETIME2(3),
-tiempo_estimado_entrega TIME,
-calificacion NVARCHAR(50),
-total_pedido DECIMAL(18,2),
-total_cupones DECIMAL(18,2),
-estado_pedido_id INT,
-
-
-PRIMARY KEY (id_pedido),
-FOREIGN KEY (local_id) REFERENCES ESECUELE.local(id_local),
-FOREIGN KEY (envio_id) REFERENCES ESECUELE.envio(id_envio),
-FOREIGN KEY (medio_de_pago_id) REFERENCES ESECUELE.medio_de_pago(id_medio_de_pago),
-FOREIGN KEY (usuario_id) REFERENCES ESECUELE.usuario(id_usuario),
-FOREIGN KEY (estado_pedido_id) REFERENCES ESECUELE.ESTADO_PEDIDO (id_estado_pedido)
-);
 
 CREATE TABLE ESECUELE.CUPON_APLICADO(
 cupon_id INT NOT NULL ,
@@ -318,7 +320,7 @@ FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO (id_estado_envio)
 );
 
 CREATE TABLE ESECUELE.RECLAMO(
-id_reclamo INT IDENTITY(1,1) NOT NULL ,
+id_reclamo INT NOT NULL ,
 usuario_id INT,
 pedido_id INT,
 tipo NVARCHAR(255),
@@ -349,6 +351,8 @@ FOREIGN KEY (reclamo_id) REFERENCES ESECUELE.RECLAMO (id_reclamo)
 GO
 
 COMMIT
+
+
 
 -- Tabla temporal de Localidades y Provincias
 SELECT
@@ -493,7 +497,9 @@ BEGIN
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.TIPO_LOCAL TL ON M.LOCAL_TIPO = TL.tipo
-		JOIN ESECUELE.LOCALIDAD L ON L.nombre + (SELECT P.nombre from ESECUELE.PROVINCIA P WHERE P.id_provincia = L.provincia_id) = M.LOCAL_LOCALIDAD + M.LOCAL_PROVINCIA
+		JOIN ESECUELE.LOCALIDAD L ON L.nombre  =  M.LOCAL_LOCALIDAD
+		JOIN ESECUELE.PROVINCIA P ON P.nombre = M.LOCAL_PROVINCIA
+		WHERE L.provincia_id = P.id_provincia
 
 	INSERT INTO ESECUELE.HORARIOS_LOCAL (local_id,horario_hora_apertura,horario_hora_cierre,horario_hora_dia)
 		SELECT DISTINCT
@@ -503,7 +509,10 @@ BEGIN
 		M.HORARIO_LOCAL_DIA
 		FROM
 		gd_esquema.Maestra M
-		JOIN ESECUELE.LOCAL L ON M.LOCAL_NOMBRE + M.LOCAL_DIRECCION + M.LOCAL_LOCALIDAD = L.nombre + L.direccion + (SELECT LO.nombre FROM ESECUELE.LOCALIDAD LO WHERE LO.id_localidad = L.localidad_id)
+		JOIN ESECUELE.LOCAL L ON M.LOCAL_NOMBRE + M.LOCAL_DIRECCION  = L.nombre + L.direccion
+		JOIN ESECUELE.LOCALIDAD LO ON LO.nombre = M.LOCAL_LOCALIDAD
+		WHERE
+		LO.id_localidad = L.localidad_id
 
 
 	-- Insertamos los productos de cada local --
@@ -517,7 +526,11 @@ BEGIN
 		M.PRODUCTO_LOCAL_PRECIO
 		FROM
 		gd_esquema.Maestra M
-		JOIN ESECUELE.LOCAL L ON L.nombre + L.descripcion + (SELECT LO.nombre FROM ESECUELE.LOCALIDAD LO WHERE LO.id_localidad = L.localidad_id) = M.LOCAL_NOMBRE + M.LOCAL_DESCRIPCION + M.LOCAL_LOCALIDAD
+		JOIN ESECUELE.LOCAL L ON L.nombre + L.descripcion = M.LOCAL_NOMBRE + M.LOCAL_DESCRIPCION
+		JOIN ESECUELE.LOCALIDAD LO ON LO.nombre = M.LOCAL_LOCALIDAD
+		WHERE
+		LO.id_localidad = L.localidad_id
+
 
 END
 GO
@@ -632,29 +645,8 @@ BEGIN
 		M.OPERADOR_RECLAMO_FECHA_NAC
 		FROM
 		gd_esquema.Maestra M
-
-END
-GO
-
-
-CREATE PROCEDURE CREAR_ENVIOS
-AS
-BEGIN
-
-	INSERT INTO ESECUELE.ENVIO (fecha_pedido,direccion_usuario_id,tarifa_servicio,propina,repartidor_id,precio_envio)
-		SELECT DISTINCT
-		M.PEDIDO_FECHA,
-		DU.id_direccion_usuario,
-		M.PEDIDO_TARIFA_SERVICIO,
-		M.PEDIDO_PROPINA,
-		R.id_repartidor,
-		M.PEDIDO_PRECIO_ENVIO
-		FROM
-		gd_esquema.Maestra M
-		JOIN ESECUELE.DIRECCION_USUARIO DU ON M.DIRECCION_USUARIO_DIRECCION = DU.direccion
-		JOIN ESECUELE.LOCALIDAD L ON DU.localidad_id = L.id_localidad
-		JOIN ESECUELE.REPARTIDOR R ON R.dni=M.REPARTIDOR_DNI AND R.nombre=M.REPARTIDOR_NOMBRE AND R.apellido = M.REPARTIDOR_APELLIDO
-		WHERE M.DIRECCION_USUARIO_DIRECCION + M.DIRECCION_USUARIO_LOCALIDAD  = DU.direccion + L.nombre
+		WHERE
+		M.OPERADOR_RECLAMO_NOMBRE IS NOT NULL
 
 END
 GO
@@ -674,14 +666,11 @@ BEGIN
 		M.PEDIDO_ESTADO
 
 	-- Creamos los pedidos --
-	INSERT INTO ESECUELE.PEDIDO (id_pedido,fecha_entrega,usuario_id,local_id,envio_id,medio_de_pago_id,observaciones,estado_pedido_id,fecha_entrega
-								,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
+	INSERT INTO ESECUELE.PEDIDO (id_pedido,usuario_id,local_id,medio_de_pago_id,observaciones,estado_pedido_id,fecha_entrega,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
 		SELECT DISTINCT
 		M.PEDIDO_NRO,
-		M.PEDIDO_FECHA,
 		U.id_usuario,
 		L.id_local,
-		E.id_envio,
 		MP.id_medio_de_pago,
 		M.PEDIDO_OBSERV,
 		PE.id_estado_pedido,
@@ -694,8 +683,7 @@ BEGIN
 		gd_esquema.Maestra M
 		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
 		JOIN ESECUELE.LOCAL L ON L.nombre + L.descripcion = M.LOCAL_NOMBRE + M.LOCAL_DESCRIPCION
-		JOIN ESECUELE.ENVIO E ON E.fecha_pedido = M.PEDIDO_FECHA
-		JOIN ESECUELE.DIRECCION_USUARIO DU ON DU.id_direccion_usuario = E.direccion_usuario_id AND DU.direccion = M.DIRECCION_USUARIO_DIRECCION
+		JOIN ESECUELE.DIRECCION_USUARIO DU ON DU.direccion = M.DIRECCION_USUARIO_DIRECCION
 		JOIN ESECUELE.MEDIO_DE_PAGO MP ON MP.usuario_id = U.id_usuario AND MP.nro_tarjeta + MP.marca_tarjeta = M.MEDIO_PAGO_NRO_TARJETA + M.MARCA_TARJETA
 		JOIN ESECUELE.ESTADO_PEDIDO PE ON PE.estado = M.PEDIDO_ESTADO
 		JOIN ESECUELE.LOCALIDAD LO ON LO.id_localidad = L.localidad_id
@@ -703,51 +691,47 @@ BEGIN
 		LO.nombre = M.LOCAL_LOCALIDAD
 
 	-- Creamos los productos para cada pedido --
-	INSERT INTO ESECUELE.PRODUCTO_PEDIDO
+	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
 		SELECT DISTINCT
 		PR.id_producto,
 		PE.id_pedido,
 		M.PRODUCTO_CANTIDAD,
-		M.PRODUCTO_LOCAL_PRECIO
+		M.PRODUCTO_LOCAL_PRECIO,
+		M.PRODUCTO_CANTIDAD * M.PRODUCTO_LOCAL_PRECIO
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.PRODUCTO PR ON PR.codigo = M.PRODUCTO_LOCAL_CODIGO
 		JOIN ESECUELE.PEDIDO PE ON M.PEDIDO_NRO = PE.id_pedido
 
 
-	END
-	GO
-
-	CREATE TRIGGER GENERAR_ID ON ESECUELE.PEDIDO
-	INSTEAD OF INSERT
-	AS
-	BEGIN
-
-		DECLARE @max_id INT;
-		SELECT @max_id = ISNULL(MAX(ESECUELE.PEDIDO.id_pedido), 0) FROM ESECUELE.PEDIDO;
-
-		INSERT INTO ESECUELE.PEDIDO (id_pedido,fecha_entrega,usuario_id,local_id,envio_id,medio_de_pago_id,observaciones,estado_pedido_id,fecha_entrega
-								,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
-				SELECT
-				@max_id,
-				inserted.id_pedido,
-				inserted.fecha_entrega,
-				usuario_id,local_id
-				,envio_id,
-				medio_de_pago_id,
-				observaciones,
-				estado_pedido_id,
-				fecha_entrega,
-				tiempo_estimado_entrega,
-				calificacion,total_pedido,
-				total_cupones
-				FROM
-				inserted
-
-	END
-	GO
+END
+GO
 
 
+
+CREATE PROCEDURE CREAR_ENVIOS
+AS
+BEGIN
+
+	INSERT INTO ESECUELE.ENVIO (fecha_pedido,direccion_usuario_id,tarifa_servicio,propina,repartidor_id,precio_envio,pedido_id)
+		SELECT DISTINCT
+		M.PEDIDO_FECHA,
+		DU.id_direccion_usuario,
+		M.PEDIDO_TARIFA_SERVICIO,
+		M.PEDIDO_PROPINA,
+		R.id_repartidor,
+		M.PEDIDO_PRECIO_ENVIO,
+		P.id_pedido
+		FROM
+		gd_esquema.Maestra M
+		JOIN ESECUELE.DIRECCION_USUARIO DU ON M.DIRECCION_USUARIO_DIRECCION = DU.direccion
+		JOIN ESECUELE.LOCALIDAD L ON DU.localidad_id = L.id_localidad
+		JOIN ESECUELE.REPARTIDOR R ON R.dni=M.REPARTIDOR_DNI AND R.nombre=M.REPARTIDOR_NOMBRE AND R.apellido = M.REPARTIDOR_APELLIDO
+		JOIN ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
+		WHERE M.DIRECCION_USUARIO_DIRECCION + M.DIRECCION_USUARIO_LOCALIDAD  = DU.direccion + L.nombre
+
+END
+GO
 
 
 CREATE PROCEDURE CREAR_RECLAMOS
@@ -763,7 +747,7 @@ BEGIN
 		M.RECLAMO_ESTADO
 
 	-- Creamos los reclamos --
-	INSERT INTO ESECUELE.RECLAMO
+	INSERT INTO ESECUELE.RECLAMO (id_reclamo,usuario_id,pedido_id,tipo,descr,fecha_hora,operador_id,estado_reclamo_id,solucion,fecha_hora_solucion,calificacion)
 	SELECT
 		M.RECLAMO_NRO,
 		U.id_usuario,
@@ -783,7 +767,7 @@ BEGIN
 	JOIN
 		ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
 	JOIN
-		ESECUELE.ENVIO E ON E.id_envio = P.envio_id
+		ESECUELE.ENVIO E ON E.pedido_id = P.id_pedido
 	JOIN
 		ESECUELE.LOCAL L ON L.id_local = P.local_id AND L.nombre = M.LOCAL_NOMBRE
 	JOIN
@@ -802,7 +786,6 @@ BEGIN
 END
 GO
 
-
 CREATE PROCEDURE CREAR_CUPONES
 AS
 BEGIN
@@ -818,20 +801,28 @@ BEGIN
 	-- Agregamos los cupones --
 	INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
 		SELECT
-		M.CUPON_NRO,
-		U.id_usuario,
-		M.CUPON_FECHA_ALTA,
-		M.CUPON_FECHA_VENCIMIENTO,
-		TC.id_tipo_cupon,
-		M.CUPON_MONTO
+		a1,a2,a3,a4,a5,a6
 		FROM
-		gd_esquema.Maestra M
-		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
-		JOIN ESECUELE.TIPO_CUPON TC ON M.CUPON_TIPO = TC.tipo
+			(
+			SELECT DISTINCT
+			M.CUPON_NRO a1,
+			U.id_usuario a2,
+			M.CUPON_FECHA_ALTA a3,
+			M.CUPON_FECHA_VENCIMIENTO a4,
+			TC.id_tipo_cupon a5,
+			M.CUPON_MONTO a6,
+			ROW_NUMBER() OVER (PARTITION BY M.CUPON_NRO ORDER BY U.id_usuario) rn
+			FROM
+			gd_esquema.Maestra M
+			JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
+			JOIN ESECUELE.TIPO_CUPON TC ON M.CUPON_TIPO = TC.tipo
+			) X
+		WHERE X.rn = 1
+
 
 	-- Agregamos los cupones de cada usuario aplicados --
 	INSERT INTO ESECUELE.CUPON_APLICADO
-		SELECT
+		SELECT DISTINCT
 		C.id_cupon,
 		P.id_pedido
 		FROM
@@ -842,30 +833,6 @@ BEGIN
 
 END
 GO
-
-CREATE TRIGGER GENERAR_ID ON ESECUELE.CUPON
-	INSTEAD OF INSERT
-	AS
-	BEGIN
-
-		DECLARE @max_id INT;
-		SELECT @max_id = ISNULL(MAX(ESECUELE.CUPON.id_cupon), 0) FROM ESECUELE.CUPON;
-
-		INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
-				SELECT
-				@max_id,
-				id_cupon,
-				usuario_id,
-				fecha_alta,
-				fecha_vencimiento,
-				tipo_cupon_id,
-				descuento
-				FROM
-				inserted
-
-	END
-GO
-
 
 
 
@@ -892,3 +859,35 @@ DROP PROCEDURE CREAR_ENVIOS
 DROP PROCEDURE CREAR_PEDIDOS
 DROP PROCEDURE CREAR_RECLAMOS
 DROP PROCEDURE CREAR_CUPONES
+GO
+
+
+SELECT * FROM ESECUELE.PROVINCIA;
+SELECT * FROM ESECUELE.LOCALIDAD;
+SELECT * FROM ESECUELE.USUARIO;
+SELECT * FROM ESECUELE.DIRECCION_USUARIO;
+SELECT * FROM ESECUELE.ESTADO_RECLAMO;
+SELECT * FROM ESECUELE.OPERADOR;
+SELECT * FROM ESECUELE.TIPO_CUPON;
+SELECT * FROM ESECUELE.CUPON;
+SELECT * FROM ESECUELE.TIPO_MOVILIDAD;
+SELECT * FROM ESECUELE.REPARTIDOR;
+SELECT * FROM ESECUELE.TIPO_LOCAL;
+SELECT * FROM ESECUELE.CATEGORIA_LOCAL;
+SELECT * FROM ESECUELE.LOCAL;
+SELECT * FROM ESECUELE.HORARIOS_LOCAL;
+SELECT * FROM ESECUELE.MEDIO_DE_PAGO;
+SELECT * FROM ESECUELE.ESTADO_PEDIDO;
+SELECT * FROM ESECUELE.PEDIDO;
+SELECT * FROM ESECUELE.ENVIO;
+
+
+
+
+
+
+
+
+
+
+
