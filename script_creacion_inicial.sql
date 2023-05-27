@@ -835,29 +835,6 @@ BEGIN
 			) X
 		WHERE X.rn = 1
 
-	declare @id_max int
-	set @id_max = (SELECT COUNT(*) FROM ESECUELE.CUPON)
-
-	INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
-		SELECT
-		@id_max + ROW_NUMBER() OVER (ORDER BY a1,a2),a2,a3,a4,a5,a6
-		FROM
-			(
-			SELECT DISTINCT
-			M.CUPON_NRO a1,
-			U.id_usuario a2,
-			M.CUPON_FECHA_ALTA a3,
-			M.CUPON_FECHA_VENCIMIENTO a4,
-			TC.id_tipo_cupon a5,
-			M.CUPON_MONTO a6,
-			ROW_NUMBER() OVER (PARTITION BY M.CUPON_NRO ORDER BY U.id_usuario) rn
-			FROM
-			gd_esquema.Maestra M
-			JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
-			JOIN ESECUELE.TIPO_CUPON TC ON M.CUPON_TIPO = TC.tipo
-			) X
-		WHERE X.rn > 1
-
 		SET IDENTITY_INSERT ESECUELE.CUPON OFF
 
 	-- Agregamos los cupones de cada usuario aplicados --
