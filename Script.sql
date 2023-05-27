@@ -98,7 +98,7 @@ PRIMARY KEY(id_tipo_cupon)
 );
 
 CREATE TABLE ESECUELE.CUPON(
-id_cupon INT  NOT NULL,
+id_cupon INT IDENTITY(1,1) NOT NULL,
 usuario_id INT NOT NULL,
 fecha_alta DATE,
 fecha_vencimiento DATE,
@@ -199,7 +199,7 @@ PRIMARY KEY(id_estado_pedido)
 
 
 CREATE TABLE ESECUELE.PEDIDO(
-id_pedido INT  NOT NULL ,
+id_pedido INT IDENTITY(1,1) NOT NULL ,
 usuario_id int,
 local_id int,
 medio_de_pago_id int,
@@ -237,7 +237,7 @@ FOREIGN KEY(direccion_usuario_id) REFERENCES ESECUELE.DIRECCION_USUARIO(id_direc
 
 
 CREATE TABLE ESECUELE.CUPON_APLICADO(
-cupon_id INT NOT NULL ,
+cupon_id INT  NOT NULL ,
 pedido_id INT NOT NULL ,
 
 PRIMARY KEY (cupon_id,pedido_id),
@@ -259,7 +259,7 @@ PRIMARY KEY (id_producto)
 );
 
 CREATE TABLE ESECUELE.PRODUCTO_PEDIDO(
-id_producto INT  NOT NULL ,
+id_producto INT NOT NULL ,
 nro_pedido INT  NOT NULL ,
 cantidad INT,
 total_productos DECIMAL(18,2),
@@ -320,7 +320,7 @@ FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO (id_estado_envio)
 );
 
 CREATE TABLE ESECUELE.RECLAMO(
-id_reclamo INT NOT NULL ,
+id_reclamo INT IDENTITY(1,1) NOT NULL ,
 usuario_id INT,
 pedido_id INT,
 tipo NVARCHAR(255),
@@ -397,10 +397,10 @@ BEGIN
 	-- Creamos las Provincias --
 	INSERT INTO ESECUELE.PROVINCIA (nombre)
 		SELECT DISTINCT
-		##LOCALIDAD_PROVINCIA.PROVINCIA 
+		##LOCALIDAD_PROVINCIA.PROVINCIA
 		FROM
 		##LOCALIDAD_PROVINCIA
-		WHERE ##LOCALIDAD_PROVINCIA.PROVINCIA is not null 
+		WHERE ##LOCALIDAD_PROVINCIA.PROVINCIA is not null
 
 	-- Creamos las Localidades --
 	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
@@ -668,6 +668,8 @@ BEGIN
 		GROUP BY
 		M.PEDIDO_ESTADO
 
+	SET IDENTITY_INSERT ESECUELE.PEDIDO ON
+
 	-- Creamos los pedidos --
 	INSERT INTO ESECUELE.PEDIDO (id_pedido,usuario_id,local_id,medio_de_pago_id,observaciones,estado_pedido_id,fecha_entrega,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
 		SELECT DISTINCT
@@ -692,6 +694,8 @@ BEGIN
 		JOIN ESECUELE.LOCALIDAD LO ON LO.id_localidad = L.localidad_id
 		WHERE
 		LO.nombre = M.LOCAL_LOCALIDAD
+
+	SET IDENTITY_INSERT ESECUELE.PEDIDO OFF
 
 	-- Creamos los productos para cada pedido --
 	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
@@ -749,9 +753,10 @@ BEGIN
 		M.RECLAMO_ESTADO
 		FROM
 		gd_esquema.Maestra M
-		WHERE 
+		WHERE
 		M.RECLAMO_ESTADO is not null
 
+	SET IDENTITY_INSERT ESECUELE.RECLAMO ON
 	-- Creamos los reclamos --
 	INSERT INTO ESECUELE.RECLAMO (id_reclamo,usuario_id,pedido_id,tipo,descr,fecha_hora,operador_id,estado_reclamo_id,solucion,fecha_hora_solucion,calificacion)
 	SELECT
@@ -781,6 +786,8 @@ BEGIN
 	JOIN
 		ESECUELE.ESTADO_RECLAMO ER ON M.RECLAMO_ESTADO = ER.nombre
 
+	SET IDENTITY_INSERT ESECUELE.RECLAMO OFF
+
 	INSERT INTO ESECUELE.CUPON_RECLAMO
 		SELECT
 		id_cupon,
@@ -804,6 +811,9 @@ BEGIN
 		gd_esquema.Maestra M
 		WHERE M.CUPON_TIPO is not null
 
+
+	SET IDENTITY_INSERT ESECUELE.CUPON ON
+
 	-- Agregamos los cupones --
 	INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
 		SELECT
@@ -825,6 +835,30 @@ BEGIN
 			) X
 		WHERE X.rn = 1
 
+	declare @id_max int
+	set @id_max = (SELECT COUNT(*) FROM ESECUELE.CUPON)
+
+	INSERT INTO ESECUELE.CUPON (id_cupon,usuario_id,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
+		SELECT
+		@id_max + ROW_NUMBER() OVER (ORDER BY a1,a2),a2,a3,a4,a5,a6
+		FROM
+			(
+			SELECT DISTINCT
+			M.CUPON_NRO a1,
+			U.id_usuario a2,
+			M.CUPON_FECHA_ALTA a3,
+			M.CUPON_FECHA_VENCIMIENTO a4,
+			TC.id_tipo_cupon a5,
+			M.CUPON_MONTO a6,
+			ROW_NUMBER() OVER (PARTITION BY M.CUPON_NRO ORDER BY U.id_usuario) rn
+			FROM
+			gd_esquema.Maestra M
+			JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
+			JOIN ESECUELE.TIPO_CUPON TC ON M.CUPON_TIPO = TC.tipo
+			) X
+		WHERE X.rn > 1
+
+		SET IDENTITY_INSERT ESECUELE.CUPON OFF
 
 	-- Agregamos los cupones de cada usuario aplicados --
 	INSERT INTO ESECUELE.CUPON_APLICADO
@@ -839,8 +873,6 @@ BEGIN
 
 END
 GO
-
-
 
 EXECUTE CREAR_LOCALIDADES
 EXECUTE CREAR_USUARIOS
@@ -867,25 +899,6 @@ DROP PROCEDURE CREAR_RECLAMOS
 DROP PROCEDURE CREAR_CUPONES
 GO
 
-
-SELECT * FROM ESECUELE.PROVINCIA;
-SELECT * FROM ESECUELE.LOCALIDAD;
-SELECT * FROM ESECUELE.USUARIO;
-SELECT * FROM ESECUELE.DIRECCION_USUARIO;
-SELECT * FROM ESECUELE.ESTADO_RECLAMO;
-SELECT * FROM ESECUELE.OPERADOR;
-SELECT * FROM ESECUELE.TIPO_CUPON;
-SELECT * FROM ESECUELE.CUPON;
-SELECT * FROM ESECUELE.TIPO_MOVILIDAD;
-SELECT * FROM ESECUELE.REPARTIDOR;
-SELECT * FROM ESECUELE.TIPO_LOCAL;
-SELECT * FROM ESECUELE.CATEGORIA_LOCAL;
-SELECT * FROM ESECUELE.LOCAL;
-SELECT * FROM ESECUELE.HORARIOS_LOCAL;
-SELECT * FROM ESECUELE.MEDIO_DE_PAGO;
-SELECT * FROM ESECUELE.ESTADO_PEDIDO;
-SELECT * FROM ESECUELE.PEDIDO;
-SELECT * FROM ESECUELE.ENVIO;
 
 
 
