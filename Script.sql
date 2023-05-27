@@ -125,7 +125,7 @@ telefono DECIMAL(18,0),
 direccion NVARCHAR(255),
 email NVARCHAR(255),
 fecha_nac DATE,
-tipo_movilidad_id int,
+tipo_movilidad_id int NOT NULL,
 localidad_id int
 
 PRIMARY KEY (id_repartidor),
@@ -143,7 +143,7 @@ PRIMARY KEY(id_tipo_local)
 CREATE TABLE ESECUELE.CATEGORIA_LOCAL(
 id_categoria_local INT IDENTITY(1,1) NOT NULL ,
 categoria NVARCHAR(50),
-tipo_local_id INT
+tipo_local_id INT NOT NULL
 
 PRIMARY KEY(id_categoria_local)
 FOREIGN KEY (tipo_local_id) REFERENCES ESECUELE.TIPO_LOCAL (id_tipo_local)
@@ -168,7 +168,7 @@ PRIMARY KEY (id_local)
 
 CREATE TABLE ESECUELE.HORARIOS_LOCAL (
 id_horario_local INT IDENTITY(1,1) NOT NULL,
-local_id INT,
+local_id INT NOT NULL,
 horario_hora_apertura DECIMAL(18,0),
 horario_hora_cierre  DECIMAL(18,0),
 horario_hora_dia NVARCHAR(50),
@@ -183,7 +183,7 @@ CREATE TABLE ESECUELE.MEDIO_DE_PAGO(
 id_medio_de_pago INT IDENTITY(1,1) NOT NULL ,
 tipo NVARCHAR(50),
 nro_tarjeta NVARCHAR(50),
-usuario_id int,
+usuario_id int NOT NULL,
 marca_tarjeta NVARCHAR(100),
 
 PRIMARY KEY(id_medio_de_pago),
@@ -200,16 +200,16 @@ PRIMARY KEY(id_estado_pedido)
 
 CREATE TABLE ESECUELE.PEDIDO(
 id_pedido INT IDENTITY(1,1) NOT NULL ,
-usuario_id int,
-local_id int,
-medio_de_pago_id int,
+usuario_id int NOT NULL,
+local_id int NOT NULL,
+medio_de_pago_id int NOT NULL,
 observaciones NVARCHAR(255),
 fecha_entrega DATETIME2(3),
 tiempo_estimado_entrega decimal(18,0),
 calificacion NVARCHAR(50),
 total_pedido DECIMAL(18,2),
 total_cupones DECIMAL(18,2),
-estado_pedido_id INT,
+estado_pedido_id INT NOT NULL,
 
 
 PRIMARY KEY (id_pedido),
@@ -221,12 +221,12 @@ FOREIGN KEY (estado_pedido_id) REFERENCES ESECUELE.ESTADO_PEDIDO (id_estado_pedi
 
 CREATE TABLE ESECUELE.ENVIO(
 id_envio INT IDENTITY(1,1) NOT NULL ,
-pedido_id INT,
+pedido_id INT NOT NULL,
 fecha_pedido DATETIME2,
-direccion_usuario_id int,
+direccion_usuario_id int NOT NULL,
 tarifa_servicio int,
 propina DECIMAL(18,2),
-repartidor_id int,
+repartidor_id int NOT NULL,
 precio_envio DECIMAL(18,2),
 
 PRIMARY KEY (id_envio),
@@ -248,7 +248,7 @@ FOREIGN KEY (pedido_id) REFERENCES ESECUELE.pedido(id_pedido)
 
 CREATE TABLE ESECUELE.PRODUCTO(
 id_producto INT IDENTITY(1,1) NOT NULL ,
-local_id INT,
+local_id INT NOT NULL,
 codigo NVARCHAR(255),
 nombre NVARCHAR(255),
 descripcion NVARCHAR(255),
@@ -291,24 +291,24 @@ PRIMARY KEY (id_estado_envio)
 
 CREATE TABLE ESECUELE.ENVIO_MENSAJERIA (
 id_envio INT IDENTITY(1,1) NOT NULL ,
-usuario_id INT,
+usuario_id INT NOT NULL,
 dir_origen NVARCHAR(255),
 dir_destino NVARCHAR(255),
 distancia_km DECIMAL(18,2),
-localidad_id INT,
-tipo_paquete_id INT,
+localidad_id INT NOT NULL,
+tipo_paquete_id INT NOT NULL,
 valor_asegurado DECIMAL(18,2),
 observaciones NVARCHAR(255),
 precio_envio DECIMAL(18,2),
 precio_seguro DECIMAL(18,2),
-repartidor_id INT,
+repartidor_id INT NOT NULL,
 propina DECIMAL(18,2),
-medio_de_pago_id INT,
+medio_de_pago_id INT NOT NULL,
 fecha_hora_entrega DATETIME2(3),
 fecha_hora_pedido DATETIME2(3),
 calificacion DECIMAL(18,0),
 total DECIMAL(18,2),
-estado_id INT,
+estado_id INT NOT NULL,
 tiempo_estimado DECIMAL(18,2),
 PRIMARY KEY(id_envio),
 FOREIGN KEY(usuario_id) REFERENCES ESECUELE.USUARIO (id_usuario),
@@ -321,13 +321,13 @@ FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO (id_estado_envio)
 
 CREATE TABLE ESECUELE.RECLAMO(
 id_reclamo INT IDENTITY(1,1) NOT NULL ,
-usuario_id INT,
-pedido_id INT,
+usuario_id INT NOT NULL,
+pedido_id INT NOT NULL,
 tipo NVARCHAR(255),
 descr NVARCHAR(255),
 fecha_hora DATETIME2(3),
-operador_id INT,
-estado_reclamo_id INT,
+operador_id INT NOT NULL,
+estado_reclamo_id INT NOT NULL,
 solucion NVARCHAR(255),
 fecha_hora_solucion DATE,
 calificacion INT,
