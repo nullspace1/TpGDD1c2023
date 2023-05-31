@@ -182,13 +182,29 @@ FOREIGN KEY(local_id) REFERENCES ESECUELE.LOCAL(id_local)
 CREATE TABLE ESECUELE.MEDIO_DE_PAGO(
 id_medio_de_pago INT IDENTITY(1,1) NOT NULL ,
 tipo NVARCHAR(50),
+
+
+PRIMARY KEY(id_medio_de_pago)
+);
+
+CREATE TABLE ESECUELE.MEDIO_DE_PAGO_USUARIO(
+medio_de_pago_id INT NOT NULL,
+usuario_id INT NOT NULL,
+
+PRIMARY KEY(medio_de_pago_id, usuario_id),
+FOREIGN KEY(medio_de_pago_id) REFERENCES ESECUELE.MEDIO_DE_PAGO(id_medio_de_pago),
+FOREIGN KEY(usuario_id) REFERENCES ESECUELE.USUARIO(id_usuario)
+)
+
+CREATE TABLE ESECUELE.TARJETA(
+id_tarjeta INT IDENTITY(1,1) NOT NULL,
 nro_tarjeta NVARCHAR(50),
 usuario_id int NOT NULL,
-marca_tarjeta NVARCHAR(100),
+marca_tarjeta NVARCHAR(100)
 
-PRIMARY KEY(id_medio_de_pago),
-FOREIGN KEY (usuario_id) REFERENCES ESECUELE.usuario(id_usuario)
-);
+PRIMARY KEY(id_tarjeta),
+FOREIGN KEY (usuario_id) REFERENCES ESECUELE.USUARIO(id_usuario)
+)
 
 CREATE TABLE ESECUELE.ESTADO_PEDIDO(
 id_estado_pedido INT IDENTITY(1,1) NOT NULL ,
@@ -202,7 +218,7 @@ CREATE TABLE ESECUELE.PEDIDO(
 id_pedido INT IDENTITY(1,1) NOT NULL ,
 usuario_id int NOT NULL,
 local_id int NOT NULL,
-medio_de_pago_id int NOT NULL,
+tarjeta_id int NOT NULL,
 observaciones NVARCHAR(255),
 fecha_entrega DATETIME2(3),
 tiempo_estimado_entrega decimal(18,0),
@@ -214,7 +230,7 @@ estado_pedido_id INT NOT NULL,
 
 PRIMARY KEY (id_pedido),
 FOREIGN KEY (local_id) REFERENCES ESECUELE.local(id_local),
-FOREIGN KEY (medio_de_pago_id) REFERENCES ESECUELE.medio_de_pago(id_medio_de_pago),
+FOREIGN KEY (tarjeta_id) REFERENCES ESECUELE.TARJETA(id_tarjeta),
 FOREIGN KEY (usuario_id) REFERENCES ESECUELE.usuario(id_usuario),
 FOREIGN KEY (estado_pedido_id) REFERENCES ESECUELE.ESTADO_PEDIDO (id_estado_pedido)
 );
@@ -303,7 +319,7 @@ precio_envio DECIMAL(18,2),
 precio_seguro DECIMAL(18,2),
 repartidor_id INT NOT NULL,
 propina DECIMAL(18,2),
-medio_de_pago_id INT NOT NULL,
+tarjeta_id INT NOT NULL,
 fecha_hora_entrega DATETIME2(3),
 fecha_hora_pedido DATETIME2(3),
 calificacion DECIMAL(18,0),
@@ -315,7 +331,7 @@ FOREIGN KEY(usuario_id) REFERENCES ESECUELE.USUARIO (id_usuario),
 FOREIGN KEY(localidad_id) REFERENCES ESECUELE.LOCALIDAD (id_localidad),
 FOREIGN KEY(tipo_paquete_id) REFERENCES ESECUELE.TIPO_PAQUETE (id_tipo_paquete),
 FOREIGN KEY(repartidor_id) REFERENCES ESECUELE.REPARTIDOR (id_repartidor),
-FOREIGN KEY(medio_de_pago_id) REFERENCES ESECUELE.MEDIO_DE_PAGO (id_medio_de_pago),
+FOREIGN KEY(tarjeta_id) REFERENCES ESECUELE.TARJETA (id_tarjeta),
 FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO (id_estado_envio)
 );
 
@@ -347,47 +363,11 @@ PRIMARY KEY(cupon_id,reclamo_id),
 FOREIGN KEY (cupon_id) REFERENCES ESECUELE.CUPON (id_cupon),
 FOREIGN KEY (reclamo_id) REFERENCES ESECUELE.RECLAMO (id_reclamo)
 );
-
 GO
 
 COMMIT
-
-
-
--- Tabla temporal de Localidades y Provincias
-SELECT
-Union_Tablas.PROVINCIA,
-Union_Tablas.LOCALIDAD
-INTO
-##LOCALIDAD_PROVINCIA
-FROM
-(
-		(
-		SELECT DISTINCT
-		LOCAL_LOCALIDAD as LOCALIDAD,
-		LOCAL_PROVINCIA as PROVINCIA
-		FROM
-		gd_esquema.Maestra
-		)
-	UNION
-		(
-		SELECT DISTINCT
-		ENVIO_MENSAJERIA_LOCALIDAD as LOCALIDAD,
-		ENVIO_MENSAJERIA_PROVINCIA as PROVINCIA
-		FROM
-		gd_esquema.Maestra
-		)
-	UNION
-		(
-		SELECT
-		DIRECCION_USUARIO_LOCALIDAD as LOCALIDAD,
-		DIRECCION_USUARIO_PROVINCIA as PROVINCIA
-		FROM
-		gd_esquema.Maestra
-		)
-	) as Union_Tablas
-
 GO
+
 
 
 CREATE PROCEDURE CREAR_LOCALIDADES
@@ -397,25 +377,71 @@ BEGIN
 	-- Creamos las Provincias --
 	INSERT INTO ESECUELE.PROVINCIA (nombre)
 		SELECT DISTINCT
-		##LOCALIDAD_PROVINCIA.PROVINCIA
+		M.LOCAL_PROVINCIA
 		FROM
-		##LOCALIDAD_PROVINCIA
-		WHERE ##LOCALIDAD_PROVINCIA.PROVINCIA is not null
+		gd_esquema.Maestra M
+		WHERE M.LOCAL_PROVINCIA IS NOT NULL
+
+	INSERT INTO ESECUELE.PROVINCIA (nombre)
+		SELECT DISTINCT
+		M.DIRECCION_USUARIO_PROVINCIA
+		FROM
+		gd_esquema.Maestra M
+		WHERE M.DIRECCION_USUARIO_PROVINCIA IS NOT NULL AND M.DIRECCION_USUARIO_PROVINCIA NOT IN (SELECT nombre from ESECUELE.PROVINCIA)
+
+	INSERT INTO ESECUELE.PROVINCIA (nombre)
+		SELECT DISTINCT
+		M.ENVIO_MENSAJERIA_PROVINCIA
+		FROM
+		gd_esquema.Maestra M
+		WHERE M.ENVIO_MENSAJERIA_PROVINCIA IS NOT NULL AND M.DIRECCION_USUARIO_PROVINCIA NOT IN (SELECT nombre from ESECUELE.PROVINCIA)
 
 	-- Creamos las Localidades --
 	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
-		SELECT
-		##LOCALIDAD_PROVINCIA.LOCALIDAD,
+		SELECT DISTINCT
+		M.DIRECCION_USUARIO_LOCALIDAD,
+		ESECUELE.PROVINCIA.id_provincia
+		FROM
+		gd_esquema.Maestra M
+		JOIN
+		ESECUELE.PROVINCIA ON M.DIRECCION_USUARIO_PROVINCIA = ESECUELE.PROVINCIA.nombre
+
+	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
+		SELECT DISTINCT
+		M.ENVIO_MENSAJERIA_LOCALIDAD,
 		P.id_provincia
 		FROM
-		##LOCALIDAD_PROVINCIA
-		JOIN ESECUELE.PROVINCIA P ON ##LOCALIDAD_PROVINCIA.PROVINCIA = nombre
+		gd_esquema.Maestra M
+		JOIN
+		ESECUELE.PROVINCIA P ON M.ENVIO_MENSAJERIA_LOCALIDAD = P.nombre
+		WHERE
+		M.ENVIO_MENSAJERIA_LOCALIDAD NOT IN (SELECT nombre FROM ESECUELE.LOCALIDAD L WHERE  L.provincia_id = P.id_provincia)
 
+
+	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
+		SELECT DISTINCT
+		M.LOCAL_LOCALIDAD,
+		P.id_provincia
+		FROM
+		gd_esquema.Maestra M
+		JOIN
+		ESECUELE.PROVINCIA P ON M.LOCAL_LOCALIDAD = P.nombre
+		WHERE
+		M.LOCAL_LOCALIDAD NOT IN (SELECT nombre FROM ESECUELE.LOCALIDAD L WHERE  L.provincia_id = P.id_provincia)
 
 END
 GO
 
+CREATE PROCEDURE CREAR_INDICES
+AS
+BEGIN
 
+CREATE INDEX idx_user
+ON gd_esquema.Maestra (USUARIO_DNI,USUARIO_NOMBRE,USUARIO_APELLIDO)
+
+
+END
+GO
 
 CREATE PROCEDURE CREAR_USUARIOS
 AS
@@ -456,13 +482,28 @@ BEGIN
 
 
 
-	-- Agregamos los medios de pago del usuario --
-	INSERT INTO ESECUELE.MEDIO_DE_PAGO (tipo,nro_tarjeta,usuario_id,marca_tarjeta)
+	-- Agregamos los medios de pago --
+	INSERT INTO ESECUELE.MEDIO_DE_PAGO (tipo)
 		SELECT DISTINCT
-		M.MEDIO_PAGO_TIPO,
+		M.MEDIO_PAGO_TIPO
+		FROM
+		gd_esquema.Maestra M
+		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
+
+	INSERT INTO ESECUELE.MEDIO_DE_PAGO_USUARIO (medio_de_pago_id,usuario_id)
+		SELECT DISTINCT
+		MP.id_medio_de_pago,
+		U.id_usuario
+		FROM
+		gd_esquema.Maestra M
+		JOIN ESECUELE.MEDIO_DE_PAGO MP ON MP.tipo = M.MEDIO_PAGO_TIPO
+		JOIN ESECUELE.USUARIO U ON U.dni = M.USUARIO_DNI AND U.nombre + U.apellido = M.USUARIO_NOMBRE + M.USUARIO_APELLIDO
+
+	INSERT INTO ESECUELE.TARJETA (nro_tarjeta,marca_tarjeta,usuario_id)
+		SELECT DISTINCT
 		M.MEDIO_PAGO_NRO_TARJETA,
-		U.id_usuario,
-		M.MARCA_TARJETA
+		M.MARCA_TARJETA,
+		U.id_usuario
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
@@ -485,7 +526,7 @@ BEGIN
 		FROM
 		gd_esquema.Maestra M
 		WHERE
-		M.LOCAL_TIPO is not null
+		M.LOCAL_TIPO IS NOT NULL
 
 
 	-- Insertamos los locales propios --
@@ -513,10 +554,7 @@ BEGIN
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.LOCAL L ON M.LOCAL_NOMBRE + M.LOCAL_DIRECCION  = L.nombre + L.direccion
-		JOIN ESECUELE.LOCALIDAD LO ON LO.nombre = M.LOCAL_LOCALIDAD
-		WHERE
-		LO.id_localidad = L.localidad_id
-
+		JOIN ESECUELE.LOCALIDAD LOC ON LOC.id_localidad = L.localidad_id AND LOC.nombre = M.LOCAL_LOCALIDAD
 
 	-- Insertamos los productos de cada local --
 
@@ -549,8 +587,6 @@ BEGIN
 		M.REPARTIDOR_TIPO_MOVILIDAD
 		FROM
 		gd_esquema.Maestra M
-		GROUP BY
-		M.REPARTIDOR_TIPO_MOVILIDAD
 
 	-- Creamos los repartidores --
 	INSERT INTO ESECUELE.REPARTIDOR (nombre,apellido,dni,telefono,direccion,fecha_nac,tipo_movilidad_id,localidad_id,email)
@@ -581,6 +617,8 @@ BEGIN
 		M.ENVIO_MENSAJERIA_ESTADO
 		FROM
 		gd_esquema.Maestra M
+		WHERE
+		M.ENVIO_MENSAJERIA_ESTADO IS NOT NULL
 
 	-- Creamos los tipos de paquete --
 	INSERT INTO ESECUELE.TIPO_PAQUETE (tipo,ancho,alto,largo,peso,precio)
@@ -593,12 +631,14 @@ BEGIN
 		M.PAQUETE_TIPO_PRECIO
 		FROM
 		gd_esquema.Maestra M
+		WHERE
+		M.PAQUETE_TIPO IS NOT NULL
 
 
 
 	-- Creamos los repartidores --
 	INSERT INTO ESECUELE.ENVIO_MENSAJERIA (usuario_id,dir_origen,dir_destino,distancia_km,localidad_id,tipo_paquete_id,valor_asegurado,
-											observaciones,precio_envio,precio_seguro,repartidor_id,propina,medio_de_pago_id,
+											observaciones,precio_envio,precio_seguro,repartidor_id,propina,tarjeta_id,
 											fecha_hora_entrega,fecha_hora_pedido,calificacion,total,estado_id,tiempo_estimado)
 		SELECT DISTINCT
 		U.id_usuario,
@@ -606,29 +646,31 @@ BEGIN
 		M.ENVIO_MENSAJERIA_DIR_DEST,
 		M.ENVIO_MENSAJERIA_KM,
 		L.id_localidad,
-		T.id_tipo_paquete,
+		TP.id_tipo_paquete,
 		M.ENVIO_MENSAJERIA_VALOR_ASEGURADO,
 		M.ENVIO_MENSAJERIA_OBSERV,
 		M.ENVIO_MENSAJERIA_PRECIO_ENVIO,
 		M.ENVIO_MENSAJERIA_PRECIO_SEGURO,
 		R.id_repartidor,
 		M.ENVIO_MENSAJERIA_PROPINA,
-		MP.id_medio_de_pago,
+		T.id_tarjeta,
 		M.ENVIO_MENSAJERIA_FECHA_ENTREGA,
 		M.ENVIO_MENSAJERIA_FECHA,
 		M.ENVIO_MENSAJERIA_CALIFICACION,
 		M.ENVIO_MENSAJERIA_TOTAL,
-		E.id_estado_envio,
+		EV.id_estado_envio,
 		M.ENVIO_MENSAJERIA_TIEMPO_ESTIMADO
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
-		JOIN ESECUELE.LOCALIDAD L ON L.nombre + (SELECT nombre from ESECUELE.PROVINCIA P WHERE P.id_provincia = L.provincia_id ) = M.ENVIO_MENSAJERIA_LOCALIDAD + M.ENVIO_MENSAJERIA_PROVINCIA
-		JOIN ESECUELE.TIPO_PAQUETE T ON T.tipo = M.PAQUETE_TIPO
-		JOIN ESECUELE.REPARTIDOR R ON R.dni=M.REPARTIDOR_DNI AND R.nombre=M.REPARTIDOR_NOMBRE AND R.apellido = M.REPARTIDOR_APELLIDO
-		JOIN ESECUELE.MEDIO_DE_PAGO MP ON MP.usuario_id = U.id_usuario AND MP.nro_tarjeta = M.MEDIO_PAGO_NRO_TARJETA  AND  MP.marca_tarjeta = M.MARCA_TARJETA AND MP.tipo = M.MEDIO_PAGO_TIPO
-		JOIN ESECUELE.ESTADO_ENVIO E ON E.estado = M.ENVIO_MENSAJERIA_ESTADO
-
+		JOIN ESECUELE.TARJETA T ON T.usuario_id = U.id_usuario AND T.nro_tarjeta = M.MEDIO_PAGO_NRO_TARJETA
+		JOIN ESECUELE.PROVINCIA P ON M.ENVIO_MENSAJERIA_PROVINCIA = P.nombre
+		JOIN ESECUELE.LOCALIDAD L ON M.ENVIO_MENSAJERIA_LOCALIDAD = L.nombre and L.provincia_id = P.id_provincia
+		JOIN ESECUELE.TIPO_PAQUETE TP ON M.PAQUETE_TIPO = TP.tipo
+		JOIN ESECUELE.REPARTIDOR R ON M.REPARTIDOR_DNI = R.dni
+		JOIN ESECUELE.ESTADO_ENVIO EV ON M.ENVIO_MENSAJERIA_ESTADO = EV.estado
+		WHERE
+		M.ENVIO_MENSAJERIA_NRO IS NOT NULL
 END
 GO
 
@@ -665,18 +707,17 @@ BEGIN
 		M.PEDIDO_ESTADO
 		FROM
 		gd_esquema.Maestra M
-		GROUP BY
-		M.PEDIDO_ESTADO
+		WHERE M.PEDIDO_ESTADO IS NOT NULL
 
 	SET IDENTITY_INSERT ESECUELE.PEDIDO ON
 
 	-- Creamos los pedidos --
-	INSERT INTO ESECUELE.PEDIDO (id_pedido,usuario_id,local_id,medio_de_pago_id,observaciones,estado_pedido_id,fecha_entrega,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
+	INSERT INTO ESECUELE.PEDIDO (id_pedido,usuario_id,local_id,tarjeta_id,observaciones,estado_pedido_id,fecha_entrega,tiempo_estimado_entrega,calificacion,total_pedido,total_cupones)
 		SELECT DISTINCT
 		M.PEDIDO_NRO,
 		U.id_usuario,
 		L.id_local,
-		MP.id_medio_de_pago,
+		T.id_tarjeta,
 		M.PEDIDO_OBSERV,
 		PE.id_estado_pedido,
 		M.PEDIDO_FECHA_ENTREGA,
@@ -686,32 +727,34 @@ BEGIN
 		M.PEDIDO_TOTAL_CUPONES
 		FROM
 		gd_esquema.Maestra M
-		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
-		JOIN ESECUELE.LOCAL L ON L.nombre + L.descripcion = M.LOCAL_NOMBRE + M.LOCAL_DESCRIPCION
-		JOIN ESECUELE.DIRECCION_USUARIO DU ON DU.direccion = M.DIRECCION_USUARIO_DIRECCION
-		JOIN ESECUELE.MEDIO_DE_PAGO MP ON MP.usuario_id = U.id_usuario AND MP.nro_tarjeta + MP.marca_tarjeta = M.MEDIO_PAGO_NRO_TARJETA + M.MARCA_TARJETA AND MP.tipo = M.MEDIO_PAGO_TIPO
 		JOIN ESECUELE.ESTADO_PEDIDO PE ON PE.estado = M.PEDIDO_ESTADO
-		JOIN ESECUELE.LOCALIDAD LO ON LO.id_localidad = L.localidad_id
+		JOIN ESECUELE.TARJETA T ON T.nro_tarjeta = M.MEDIO_PAGO_NRO_TARJETA
+		JOIN ESECUELE.PROVINCIA P ON M.LOCAL_PROVINCIA = P.nombre
+		JOIN ESECUELE.LOCALIDAD LO ON M.LOCAL_LOCALIDAD = LO.nombre AND P.id_provincia = LO.provincia_id
+		JOIN ESECUELE.LOCAL L ON L.nombre = M.LOCAL_NOMBRE AND L.localidad_id = LO.id_localidad
+		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
 		WHERE
-		LO.nombre = M.LOCAL_LOCALIDAD
+		M.PEDIDO_NRO IS NOT NULL
 
 	SET IDENTITY_INSERT ESECUELE.PEDIDO OFF
 
 	-- Creamos los productos para cada pedido --
 	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
-	SELECT DISTINCT
-			PR.id_producto,
-			PE.id_pedido,
-			SUM(M.PRODUCTO_CANTIDAD),
-			SUM(M.PRODUCTO_LOCAL_PRECIO),
-			SUM(M.PRODUCTO_CANTIDAD * M.PRODUCTO_LOCAL_PRECIO)
-			FROM
-			gd_esquema.Maestra M
-			JOIN ESECUELE.PRODUCTO PR ON PR.codigo = M.PRODUCTO_LOCAL_CODIGO
-			JOIN ESECUELE.PEDIDO PE ON M.PEDIDO_NRO = PE.id_pedido
-			GROUP BY
-			PR.id_producto,
-			PE.id_pedido
+		SELECT DISTINCT
+		PR.id_producto,
+		PE.id_pedido,
+		SUM(M.PRODUCTO_CANTIDAD),
+		SUM(M.PRODUCTO_LOCAL_PRECIO),
+		SUM(M.PRODUCTO_CANTIDAD * M.PRODUCTO_LOCAL_PRECIO)
+		FROM
+		gd_esquema.Maestra M
+		JOIN ESECUELE.PRODUCTO PR ON PR.codigo = M.PRODUCTO_LOCAL_CODIGO
+		JOIN ESECUELE.PEDIDO PE ON M.PEDIDO_NRO = PE.id_pedido
+		WHERE
+		M.PEDIDO_NRO IS NOT NULL
+		GROUP BY
+		PR.id_producto,
+		PE.id_pedido
 
 
 END
@@ -754,7 +797,7 @@ BEGIN
 		FROM
 		gd_esquema.Maestra M
 		WHERE
-		M.RECLAMO_ESTADO is not null
+		M.RECLAMO_ESTADO IS NOT NULL
 
 	SET IDENTITY_INSERT ESECUELE.RECLAMO ON
 	-- Creamos los reclamos --
@@ -773,18 +816,14 @@ BEGIN
 		M.RECLAMO_CALIFICACION
 	FROM
 		gd_esquema.Maestra M
-	JOIN
-		ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
-	JOIN
-		ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
-	JOIN
-		ESECUELE.ENVIO E ON E.pedido_id = P.id_pedido
-	JOIN
-		ESECUELE.LOCAL L ON L.id_local = P.local_id AND L.nombre = M.LOCAL_NOMBRE
-	JOIN
-		ESECUELE.OPERADOR O ON O.DNI = M.OPERADOR_RECLAMO_DNI AND O.nombre = M.OPERADOR_RECLAMO_NOMBRE AND O.apellido = M.OPERADOR_RECLAMO_APELLIDO
-	JOIN
-		ESECUELE.ESTADO_RECLAMO ER ON M.RECLAMO_ESTADO = ER.nombre
+	JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
+	JOIN ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
+	JOIN ESECUELE.ENVIO E ON E.pedido_id = P.id_pedido
+	JOIN ESECUELE.LOCAL L ON L.id_local = P.local_id AND L.nombre = M.LOCAL_NOMBRE
+	JOIN ESECUELE.OPERADOR O ON O.DNI = M.OPERADOR_RECLAMO_DNI AND O.nombre = M.OPERADOR_RECLAMO_NOMBRE AND O.apellido = M.OPERADOR_RECLAMO_APELLIDO
+	JOIN ESECUELE.ESTADO_RECLAMO ER ON M.RECLAMO_ESTADO = ER.nombre
+	WHERE
+	M.RECLAMO_NRO IS NOT NULL
 
 	SET IDENTITY_INSERT ESECUELE.RECLAMO OFF
 
@@ -796,6 +835,8 @@ BEGIN
 		gd_esquema.Maestra M
 		JOIN ESECUELE.CUPON C ON M.CUPON_NRO = C.id_cupon
 		JOIN ESECUELE.RECLAMO R ON M.RECLAMO_NRO = R.id_reclamo
+		WHERE
+		M.RECLAMO_NRO IS NOT NULL
 END
 GO
 
@@ -827,7 +868,7 @@ BEGIN
 			M.CUPON_FECHA_VENCIMIENTO a4,
 			TC.id_tipo_cupon a5,
 			M.CUPON_MONTO a6,
-			ROW_NUMBER() OVER (PARTITION BY M.CUPON_NRO ORDER BY U.id_usuario) rn
+			ROW_NUMBER() OVER (PARTITION BY M.CUPON_NRO ORDER BY U.id_usuario DESC) rn
 			FROM
 			gd_esquema.Maestra M
 			JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
@@ -853,6 +894,7 @@ GO
 
 EXECUTE CREAR_LOCALIDADES
 EXECUTE CREAR_USUARIOS
+EXECUTE CREAR_INDICES
 EXECUTE CREAR_LOCALES
 EXECUTE CREAR_REPARTIDORES
 EXECUTE CREAR_ENVIO_MENSAJERIA
@@ -862,10 +904,9 @@ EXECUTE CREAR_ENVIOS
 EXECUTE CREAR_RECLAMOS
 EXECUTE CREAR_CUPONES
 
-DROP TABLE ##LOCALIDAD_PROVINCIA
-
 DROP PROCEDURE CREAR_LOCALIDADES
 DROP PROCEDURE CREAR_USUARIOS
+DROP PROCEDURE CREAR_INDICES
 DROP PROCEDURE CREAR_LOCALES
 DROP PROCEDURE CREAR_REPARTIDORES
 DROP PROCEDURE CREAR_ENVIO_MENSAJERIA
