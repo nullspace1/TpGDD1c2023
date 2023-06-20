@@ -588,415 +588,143 @@ INSERT INTO BI.ESTADISTICAS_RECLAMOS(cantidad_reclamos,monto_mensual_cupones,mes
 	dbo.RANGO_ETARIO(O.fecha_nacimiento)
 GO
 
-
-
-
 DROP FUNCTION dbo.FRANJA_HORARIA
 DROP FUNCTION dbo.RANGO_ETARIO
 DROP FUNCTION dbo.MES_ANIO_ID
 GO
 
-
-/*
- Monto total no cobrado por cada local en función de los pedidos
-cancelados según el día de la semana y la franja horaria (cuentan como
-pedidos cancelados tanto los que cancela el usuario como el local).
-*/
-
-CREATE PROCEDURE dia_y_franja_max_pedidos_localidad_categoria
-AS
-BEGIN
-    SELECT 
-        BIM.año,
-        BIM.mes,
-        BIL.nombre AS localidad,
-        BITCL.categoria_local,
-        BIDS.dia_de_semana,
-        BIRH.rango_horario_inicio,
-        BIRH.rango_horario_fin,
-        MAX(BIEP.cantidad_pedidos) AS maxima_cantidad_envios
-    FROM 
-        BI.ESTADISTICAS_PEDIDOS BIEP
-    JOIN 
-        BI.MES BIM ON BIEP.anio_mes_id = BIM.id
-    JOIN
-		BI.LOCAL BILOC ON BILOC.id = BIEP.local_id 
-	JOIN
-        BI.LOCALIDAD BIL ON BILOC.localidad_id = BIL.id
-    JOIN 
-        BI.CATEGORIA_LOCAL BITCL ON BILOC.categoria_local_id = BITCL.id
-    JOIN 
-        BI.DIA BIDS ON BIEP.dia_semana_id = BIDS.id
-    JOIN 
-        BI.RANGO_HORARIO BIRH ON BIEP.franja_horaria_id = BIRH.id
-    GROUP BY 
-        BIM.año,
-        BIM.mes,
-        BIL.nombre,
-        BITCL.categoria_local,
-        BIDS.dia_de_semana,
-        BIRH.rango_horario_inicio,
-        BIRH.rango_horario_fin;
-END;
+CREATE VIEW v_desvio_promedio_tiempo_entrega AS
+SELECT
+AVG(EET.desvio_tiempo) as desvio_tiempo,
+D.dia_de_semana dia_semana,
+TM.tipo_movilidad as tipo_movilidad,
+RH.rango_horario_inicio as comienzo_rango_horario,
+RH.rango_horario_fin as fin_rango_horario
+FROM
+BI.ESTADISTICAS_ENVIOS_TOTAL EET
+JOIN
+BI.DIA D ON D.id = EET.dia_semana_id
+JOIN
+BI.TIPO_MOVILIDAD TM ON TM.id = EET.tipo_movilidad_id
+JOIN
+BI.RANGO_HORARIO RH ON RH.id = EET.franja_horaria_id
+GROUP BY
+EET.localidad_id,
+D.dia_de_semana,
+TM.tipo_movilidad,
+RH.rango_horario_inicio ,
+RH.rango_horario_fin;
 GO
 
-/*
-Valor promedio mensual que tienen los envíos de pedidos en cada
-localidad.
-*/
-
-CREATE PROCEDURE sp_obtener_monto_no_cobrado_por_pedidos_cancelados
-AS
-BEGIN
-    SELECT 
-        BIL.nombre_local AS local,
-        BIDS.dia_de_semana,
-        BIRH.rango_horario_inicio,
-        BIRH.rango_horario_fin,
-        SUM(BIEP.valor_total) AS total_no_cobrado
-    FROM 
-        BI.ESTADISTICAS_PEDIDOS BIEP
-    JOIN 
-        BI.LOCAL BIL ON BIEP.local_id = BIL.id
-    JOIN 
-        BI.DIA BIDS ON BIEP.dia_semana_id = BIDS.id
-    JOIN 
-        BI.RANGO_HORARIO BIRH ON BIEP.franja_horaria_id = BIRH.id
-    JOIN 
-        BI.ESTADO_ENVIO_PEDIDO BIEP2 ON BIEP.estado_pedido_id = BIEP2.id
-    WHERE 
-        BIEP2.estado_pedido IN ('Estado Mensajeria Cancelado')
-    GROUP BY 
-        BIL.nombre_local,
-        BIDS.dia_de_semana,
-        BIRH.rango_horario_inicio,
-        BIRH.rango_horario_fin;
-END;
+CREATE VIEW v_monto_total_cupones_utilizados AS
+SELECT
+EC.monto_total_cupones as monto_total,
+RE.rango_etario_inicio as rango_etario_comienzo,
+RE.rango_etario_fin as rango_estario_fin
+FROM
+BI.ESTADISTICAS_CUPONES EC
+JOIN
+BI.RANGO_ETARIO RE ON RE.id = EC.rango_etario_usuario_id;
 GO
 
-/*
-Desvío promedio en tiempo de entrega según el tipo de movilidad, el día
-de la semana y la franja horaria.
-El desvío debe calcularse en minutos y representa la diferencia entre la
-fecha/hora en que se realizó el pedido y la fecha/hora que se entregó en
-comparación con los minutos de tiempo estimados.
-Este indicador debe tener en cuenta todos los envíos, es decir, sumar tanto
-los envíos de pedidos como los de mensajería.
-*/
-
-CREATE PROCEDURE sp_obtener_desvio_promedio_tiempo_entrega
-AS
-BEGIN
-
-	SELECT
-	AVG(EET.desvio_tiempo) as desvio_tiempo,
-	D.dia_de_semana dia_semana,
-	TM.tipo_movilidad as tipo_movilidad,
-	RH.rango_horario_inicio as comienzo_rango_horario,
-	RH.rango_horario_fin as fin_rango_horario
-	FROM
-	BI.ESTADISTICAS_ENVIOS_TOTAL EET
-	JOIN
-	BI.DIA D ON D.id = EET.dia_semana_id
-	JOIN
-	BI.TIPO_MOVILIDAD TM ON TM.id = EET.tipo_movilidad_id
-	JOIN
-	BI.RANGO_HORARIO RH ON RH.id = EET.franja_horaria_id
-	GROUP BY
-	EET.localidad_id,
-	D.dia_de_semana,
-	TM.tipo_movilidad,
-	RH.rango_horario_inicio ,
-	RH.rango_horario_fin 
-
-END
-GO
-/*
-Monto total de los cupones utilizados por mes en función del rango etario
-de los usuarios
-*/
-
-CREATE PROCEDURE sp_obtener_monto_total_cupones_utilizados
-AS
-BEGIN
-
-	SELECT
-	EC.monto_total_cupones as monto_total,
-	RE.rango_etario_inicio as rango_etario_comienzo,
-	RE.rango_etario_fin as rango_estario_fin
-	FROM
-	BI.ESTADISTICAS_CUPONES EC
-	JOIN
-	BI.RANGO_ETARIO RE ON RE.id = EC.rango_etario_usuario_id
-
-END
+CREATE VIEW v_calificacion_mensual_local AS
+SELECT
+EL.local_id,
+AVG(EL.calificacion_promedio) as calificacion_promedio
+FROM
+BI.ESTADISTICAS_LOCAL EL
+GROUP BY
+EL.mes_anio_id,
+EL.local_id;
 GO
 
-/*Promedio de calificación mensual por local.*/
-
-CREATE PROCEDURE sp_obtener_calificacion_mensual_local
-AS
-BEGIN
-	
-	SELECT
-	EL.local_id,
-	AVG(EL.calificacion_promedio) as calificacion_promedio
-	FROM
-	BI.ESTADISTICAS_LOCAL EL
-	GROUP BY
-	EL.mes_anio_id,
-	EL.local_id
-
-END
+-- For this one, I made the assumption that @total_envios can be replaced with its value directly in the view.
+CREATE VIEW v_pedidos_envios_entregados_mensualmente AS
+SELECT
+SUM(EET.cantidad_envios) OVER (PARTITION BY EET.localidad_id, EET.rango_etario_id) / (SELECT SUM(EET2.cantidad_envios) FROM BI.ESTADISTICAS_ENVIOS_TOTAL EET2) as porcentage_envios,
+RE.rango_etario_inicio as rango_etario_repartidor_comienzo,
+RE.rango_etario_fin as rango_etario_repartidor_fin,
+L.nombre as localidad
+FROM
+BI.ESTADISTICAS_ENVIOS_TOTAL EET
+JOIN
+BI.RANGO_ETARIO RE ON RE.id = EET.rango_etario_id
+JOIN
+BI.LOCALIDAD L ON L.id = EET.localidad_id;
 GO
 
-/*
-Porcentaje de pedidos y mensajería entregados mensualmente según el
-rango etario de los repartidores y la localidad.
-Este indicador se debe tener en cuenta y sumar tanto los envíos de pedidos
-como los de mensajería.
-El porcentaje se calcula en función del total general de pedidos y envíos
-mensuales entregados.
-*/
-
-CREATE PROCEDURE sp_obtener_pedidos_envios_entregados_mensualmente
-AS
-BEGIN
-	
-	DECLARE @total_envios DECIMAL(18,2)
-	SET @total_envios = (SELECT SUM(EET2.cantidad_envios) FROM BI.ESTADISTICAS_ENVIOS_TOTAL EET2)
-
-	SELECT
-	SUM(EET.cantidad_envios) OVER (PARTITION BY EET.localidad_id, EET.rango_etario_id) / @total_envios as porcentage_envios,
-	RE.rango_etario_inicio as rango_etario_repartidor_comienzo,
-	RE.rango_etario_fin as rango_etario_repartidor_fin,
-	L.nombre as localidad
-	FROM
-	BI.ESTADISTICAS_ENVIOS_TOTAL EET
-	JOIN
-	BI.RANGO_ETARIO RE ON RE.id = EET.rango_etario_id
-	JOIN
-	BI.LOCALIDAD L ON L.id = EET.localidad_id
-
-END
+CREATE VIEW v_promedio_mensual_valor_asegudaro AS
+SELECT
+valor_promedio as valor_promedio,
+TP.tipo_paquete as tipo_paquete,
+M.año as anio,
+M.mes as mes
+FROM
+BI.ESTADISTICAS_ENVIOS_MENSAJERIA EEM
+JOIN
+BI.TIPO_PAQUETE TP ON TP.id = EEM.tipo_paquete_id
+JOIN
+BI.MES M ON M.id = EEM.anio_mes_id;
 GO
 
-
-/*
-Promedio mensual del valor asegurado (valor declarado por el usuario) de
-los paquetes enviados a través del servicio de mensajería en función del
-tipo de paquete.
-*/
-
-CREATE PROCEDURE sp_obtener_promedio_mensual_valor_asegudaro
-AS
-BEGIN
-
-	SELECT
-	valor_promedio as valor_promedio,
-	TP.tipo_paquete as tipo_paquete,
-	M.año as anio,
-	M.mes as mes
-	FROM
-	BI.ESTADISTICAS_ENVIOS_MENSAJERIA EEM
-	JOIN
-	BI.TIPO_PAQUETE TP ON TP.id = EEM.tipo_paquete_id
-	JOIN
-	BI.MES M ON M.id = EEM.anio_mes_id
-
-END
+CREATE VIEW v_cantidad_reclamos_mensuales AS
+SELECT
+L.nombre_local,
+SUM(EL.cantidad_reclamos) as cant_reclamos,
+D.dia_de_semana,
+RH.rango_horario_inicio,
+RH.rango_horario_fin
+FROM
+BI.ESTADISTICAS_LOCAL EL
+JOIN
+BI.LOCAL L ON EL.local_id = L.id
+JOIN
+BI.DIA D ON D.id = EL.dia_semana_reclamo_id
+JOIN
+BI.RANGO_HORARIO RH ON RH.id = EL.rango_horario_id
+GROUP BY
+EL.local_id,
+L.nombre_local,
+D.dia_de_semana,
+RH.rango_horario_inicio,
+RH.rango_horario_fin;
 GO
 
+CREATE VIEW v_tiempo_resolucion_reclamos AS
+SELECT
+AVG(ER.tiempo_resolucion) as tiempo_resolucion_promedio,
+TR.tipo_reclamo,
+RE.rango_etario_inicio,
+RE.rango_etario_fin
+FROM
+BI.ESTADISTICAS_RECLAMOS ER
+JOIN
+BI.TIPO_RECLAMO TR ON ER.tipo_reclamo_id = TR.id
+JOIN
+BI.RANGO_ETARIO RE ON ER.rango_etario_operador_id = RE.id
+GROUP BY
+TR.tipo_reclamo,
+RE.rango_etario_inicio,
+RE.rango_etario_fin
+ORDER BY
+RE.rango_etario_inicio;
+GO
 
-/*
-Cantidad de reclamos mensuales recibidos por cada local en función del
-día de la semana y rango horario.
-*/
-
-CREATE PROCEDURE sp_obtener_cantidad_reclamos_mensuales
-AS
-BEGIN
-
-	SELECT
-	L.nombre_local,
-	SUM(EL.cantidad_reclamos) as cant_reclamos,
-	D.dia_de_semana,
-	RH.rango_horario_inicio,
-	RH.rango_horario_fin
-	FROM
-	BI.ESTADISTICAS_LOCAL EL
-	JOIN
-	BI.LOCAL L ON EL.local_id = L.id
-	JOIN
-	BI.DIA D ON D.id = EL.dia_semana_reclamo_id
-	JOIN
-	BI.RANGO_HORARIO RH ON RH.id = EL.rango_horario_id
-	GROUP BY
-	EL.local_id,
-	L.nombre_local,
-	D.dia_de_semana,
-	RH.rango_horario_inicio,
-	RH.rango_horario_fin
-
-END
+CREATE VIEW v_monto_mensual_cupones AS
+SELECT
+SUM(ER.monto_mensual_cupones) as monto_mensual_cupones,
+M.año,
+M.mes
+FROM
+BI.ESTADISTICAS_RECLAMOS ER
+JOIN
+BI.MES M ON M.id = ER.mes_anio_id
+GROUP BY
+M.año,M.mes;
 GO
 
 
 
-/*
-Tiempo promedio de resolución de reclamos mensual según cada tipo de
-reclamo y rango etario de los operadores.
-El tiempo de resolución debe calcularse en minutos y representa la
-diferencia entre la fecha/hora en que se realizó el reclamo y la fecha/hora
-que se resolvió.
-*/
-
-CREATE PROCEDURE sp_obtener_tiempo_resolucion_reclamos
-AS
-BEGIN
-
-	SELECT
-	AVG(ER.tiempo_resolucion) as tiempo_resolucion_promedio,
-	TR.tipo_reclamo,
-	RE.rango_etario_inicio,
-	RE.rango_etario_fin
-	FROM
-	BI.ESTADISTICAS_RECLAMOS ER
-	JOIN
-	BI.TIPO_RECLAMO TR ON ER.tipo_reclamo_id = TR.id
-	JOIN
-	BI.RANGO_ETARIO RE ON ER.rango_etario_operador_id = RE.id
-	GROUP BY
-	TR.tipo_reclamo,
-	RE.rango_etario_inicio,
-	RE.rango_etario_fin
-	ORDER BY
-	RE.rango_etario_inicio
 
 
 
-
-
-END
-GO
-
-/* Monto mensual generado en cupones a partir de reclamos. */
-
-
-CREATE PROCEDURE sp_obtener_monto_mensual_cupones
-AS
-BEGIN
-	
-	SELECT
-	SUM(ER.monto_mensual_cupones),
-	M.año,
-	M.mes
-	FROM
-	BI.ESTADISTICAS_RECLAMOS ER
-	JOIN
-	BI.MES M ON M.id = ER.mes_anio_id
-	GROUP BY
-	M.año,M.mes
-
-END
-
-
-EXEC dia_y_franja_max_pedidos_localidad_categoria; -- no sabemos
-
-	
-EXEC sp_obtener_monto_no_cobrado_por_pedidos_cancelados; -- bien
-
-
-EXEC sp_obtener_desvio_promedio_tiempo_entrega; -- bien
-
-
-EXEC sp_obtener_monto_total_cupones_utilizados; -- bien
-
-
-EXEC sp_obtener_calificacion_mensual_local; -- bien
-
-
-EXEC sp_obtener_pedidos_envios_entregados_mensualmente; -- bien
-
-
-EXEC sp_obtener_promedio_mensual_valor_asegudaro; -- bien
-
-
-
-EXEC sp_obtener_cantidad_reclamos_mensuales; -- bien
-
-
-EXEC sp_obtener_tiempo_resolucion_reclamos; -- bien
-
-
-EXEC sp_obtener_monto_mensual_cupones;
-
-
--- Select from MES
-SELECT * FROM BI.MES;
-
--- Select from DIA
-SELECT * FROM BI.DIA;
-
--- Select from RANGO_HORARIO
-SELECT * FROM BI.RANGO_HORARIO;
-
--- Select from RANGO_ETARIO
-SELECT * FROM BI.RANGO_ETARIO;
-
--- Select from PROVINCIA
-SELECT * FROM BI.PROVINCIA;
-
--- Select from LOCALIDAD
-SELECT * FROM BI.LOCALIDAD;
-
--- Select from TIPO_MEDIO_PAGO
-SELECT * FROM BI.TIPO_MEDIO_PAGO;
-
--- Select from LOCAL
-SELECT * FROM BI.LOCAL;
-
--- Select from TIPO_LOCAL
-SELECT * FROM BI.TIPO_LOCAL;
-
--- Select from CATEGORIA_LOCAL
-SELECT * FROM BI.CATEGORIA_LOCAL;
-
--- Select from TIPO_MOVILIDAD
-SELECT * FROM BI.TIPO_MOVILIDAD;
-
--- Select from TIPO_PAQUETE
-SELECT * FROM BI.TIPO_PAQUETE;
-
--- Select from ESTADO_ENVIO_PEDIDO
-SELECT * FROM BI.ESTADO_ENVIO_PEDIDO;
-
--- Select from ESTADO_ENVIO_MENSAJERIA
-SELECT * FROM BI.ESTADO_ENVIO_MENSAJERIA;
-
--- Select from ESTADO_RECLAMO
-SELECT * FROM BI.ESTADO_RECLAMO;
-
--- Select from TIPO_RECLAMO
-SELECT * FROM BI.TIPO_RECLAMO;
-
--- Select from ESTADISTICAS_PEDIDOS
-SELECT * FROM BI.ESTADISTICAS_PEDIDOS;
-
--- Select from ESTADISTICAS_ENVIOS_PEDIDOS
-SELECT * FROM BI.ESTADISTICAS_ENVIOS_PEDIDOS;
-
--- Select from ESTADISTICAS_ENVIOS_MENSAJERIA
-SELECT * FROM BI.ESTADISTICAS_ENVIOS_MENSAJERIA;
-
--- Select from ESTADISTICAS_ENVIOS_TOTAL
-SELECT * FROM BI.ESTADISTICAS_ENVIOS_TOTAL;
-
--- Select from ESTADISTICAS_LOCAL
-SELECT * FROM BI.ESTADISTICAS_LOCAL;
-
--- Select from ESTADISTICAS_RECLAMOS
-SELECT * FROM BI.ESTADISTICAS_RECLAMOS;
-
--- Select from ESTADISTICAS_CUPONES
-SELECT * FROM BI.ESTADISTICAS_CUPONES;

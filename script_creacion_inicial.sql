@@ -451,7 +451,7 @@ AS
 BEGIN
 
 CREATE INDEX idx_user
-ON gd_esquema.Maestra (USUARIO_DNI,USUARIO_NOMBRE,USUARIO_APELLIDO)
+ON gd_esquema.Maestra (USUARIO_DNI)
 
 
 END
@@ -751,6 +751,9 @@ BEGIN
 
 	SET IDENTITY_INSERT ESECUELE.PEDIDO OFF
 
+	CREATE INDEX idx_reclamos
+	ON ESECUELE.PEDIDO (id_pedido)
+
 	-- Creamos los productos para cada pedido --
 	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
 		SELECT DISTINCT
@@ -822,6 +825,8 @@ BEGIN
 		gd_esquema.Maestra M
 		WHERE
 		M.RECLAMO_TIPO IS NOT NULL
+
+	
 
 	SET IDENTITY_INSERT ESECUELE.RECLAMO ON
 	-- Creamos los reclamos --
