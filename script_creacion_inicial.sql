@@ -297,7 +297,7 @@ precio decimal(18,2),
 PRIMARY KEY(id_tipo_paquete)
 );
 
-CREATE TABLE ESECUELE.ESTADO_ENVIO (
+CREATE TABLE ESECUELE.ESTADO_ENVIO_MENSAJERIA (
 id_estado_envio INT IDENTITY(1,1) NOT NULL,
 estado nvarchar(50),
 
@@ -331,7 +331,7 @@ FOREIGN KEY(localidad_id) REFERENCES ESECUELE.LOCALIDAD (id_localidad),
 FOREIGN KEY(tipo_paquete_id) REFERENCES ESECUELE.TIPO_PAQUETE (id_tipo_paquete),
 FOREIGN KEY(repartidor_id) REFERENCES ESECUELE.REPARTIDOR (id_repartidor),
 FOREIGN KEY(tarjeta_id) REFERENCES ESECUELE.TARJETA (id_tarjeta),
-FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO (id_estado_envio)
+FOREIGN KEY(estado_id) REFERENCES ESECUELE.ESTADO_ENVIO_MENSAJERIA (id_estado_envio)
 );
 
 CREATE TABLE ESECUELE.TIPO_RECLAMO(
@@ -382,13 +382,8 @@ GO
 COMMIT
 GO
 
+BEGIN TRANSACTION
 
-
-CREATE PROCEDURE CREAR_LOCALIDADES
-AS
-BEGIN
-
-	-- Creamos las Provincias --
 	INSERT INTO ESECUELE.PROVINCIA (nombre)
 		SELECT DISTINCT
 		M.LOCAL_PROVINCIA
@@ -410,7 +405,6 @@ BEGIN
 		gd_esquema.Maestra M
 		WHERE M.ENVIO_MENSAJERIA_PROVINCIA IS NOT NULL AND M.DIRECCION_USUARIO_PROVINCIA NOT IN (SELECT nombre from ESECUELE.PROVINCIA)
 
-	-- Creamos las Localidades --
 	INSERT INTO ESECUELE.LOCALIDAD (nombre,provincia_id)
 		SELECT DISTINCT
 		M.DIRECCION_USUARIO_LOCALIDAD,
@@ -443,27 +437,19 @@ BEGIN
 		WHERE
 		M.LOCAL_LOCALIDAD NOT IN (SELECT nombre FROM ESECUELE.LOCALIDAD L WHERE  L.provincia_id = P.id_provincia)
 
-END
-GO
 
-CREATE PROCEDURE CREAR_INDICES
-AS
-BEGIN
+	CREATE INDEX idx_user
+	ON gd_esquema.Maestra (USUARIO_DNI)
 
-CREATE INDEX idx_user
-ON gd_esquema.Maestra (USUARIO_DNI)
+	CREATE NONCLUSTERED INDEX idx_envio_nro
+	ON [gd_esquema].[Maestra] ([ENVIO_MENSAJERIA_NRO])
 
 
-END
-GO
+	CREATE CLUSTERED INDEX idx_reclamos
+	ON gd_esquema.Maestra  (PEDIDO_NRO)
 
-CREATE PROCEDURE CREAR_USUARIOS
-AS
-BEGIN
 
-	-- Condicion de PK para usuarios : DNI + NOMBRE + APELLIDO
 
-	-- Insertamos los usuarios
 	INSERT INTO ESECUELE.USUARIO (nombre,apellido,dni,fecha_nac,fecha_registro,telefono,mail)
 		SELECT DISTINCT
 		M.USUARIO_NOMBRE,
@@ -476,8 +462,6 @@ BEGIN
 		FROM
 		gd_esquema.Maestra M
 
-
-	-- Agregamos las direcciones del usuario --
 	INSERT INTO ESECUELE.DIRECCION_USUARIO (localidad_id,usuario_id,direccion)
 		SELECT DISTINCT
 		L.id_localidad,
@@ -494,9 +478,6 @@ BEGIN
 		WHERE
 		L.provincia_id = P.id_provincia
 
-
-
-	-- Agregamos los medios de pago --
 	INSERT INTO ESECUELE.MEDIO_DE_PAGO (tipo)
 		SELECT DISTINCT
 		M.MEDIO_PAGO_TIPO
@@ -522,18 +503,6 @@ BEGIN
 		gd_esquema.Maestra M
 		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
 
-
-END
-GO
-
-
-CREATE PROCEDURE CREAR_LOCALES
-AS
-BEGIN
-
-	-- CONDICION DE PK para Locales: Nombre + Description + Localidad
-
-	-- Insertamos los tipos de locales --
 	INSERT INTO ESECUELE.TIPO_LOCAL (tipo)
 		SELECT DISTINCT
 		M.LOCAL_TIPO
@@ -542,22 +511,36 @@ BEGIN
 		WHERE
 		M.LOCAL_TIPO IS NOT NULL
 
+	INSERT INTO ESECUELE.CATEGORIA_LOCAL (categoria, tipo_local_id) VALUES
+		('Restaurante Italiano', 1),
+		('Restaurante Chino', 1),
+		('Restaurante Mexicano', 1),
+		('Restaurante Indio', 1),
+		('Restaurante Tailand�s', 1),
+		('Frutas y Verduras', 2),
+		('Carnes y Pescados', 2),
+		('Panader�a', 2),
+		('L�cteos', 2),
+		('Especias y Hierbas', 2);
 
-	-- Insertamos los locales propios --
-	INSERT INTO ESECUELE.LOCAL (categoria_local_id,tipo_local_id,nombre,descripcion,direccion,localidad_id)
-		SELECT DISTINCT
-		NULL, -- Son las Categorias
-		TL.id_tipo_local,
-		M.LOCAL_NOMBRE,
-		M.LOCAL_DESCRIPCION,
-		M.LOCAL_DIRECCION,
-		L.id_localidad
-		FROM
-		gd_esquema.Maestra M
-		JOIN ESECUELE.TIPO_LOCAL TL ON M.LOCAL_TIPO = TL.tipo
-		JOIN ESECUELE.LOCALIDAD L ON L.nombre  =  M.LOCAL_LOCALIDAD
-		JOIN ESECUELE.PROVINCIA P ON P.nombre = M.LOCAL_PROVINCIA
-		WHERE L.provincia_id = P.id_provincia
+	INSERT INTO ESECUELE.LOCAL (categoria_local_id, tipo_local_id, nombre, descripcion, direccion, localidad_id)
+    SELECT DISTINCT
+        (SELECT TOP 1 CL.id_categoria_local
+         FROM ESECUELE.CATEGORIA_LOCAL CL
+         WHERE CL.tipo_local_id = TL.id_tipo_local
+         ORDER BY NEWID()),
+        TL.id_tipo_local,
+        M.LOCAL_NOMBRE,
+        M.LOCAL_DESCRIPCION,
+        M.LOCAL_DIRECCION,
+        L.id_localidad
+    FROM
+        gd_esquema.Maestra M
+        JOIN ESECUELE.TIPO_LOCAL TL ON M.LOCAL_TIPO = TL.tipo
+        JOIN ESECUELE.LOCALIDAD L ON L.nombre  =  M.LOCAL_LOCALIDAD
+        JOIN ESECUELE.PROVINCIA P ON P.nombre = M.LOCAL_PROVINCIA
+    WHERE L.provincia_id = P.id_provincia;
+
 
 	INSERT INTO ESECUELE.HORARIOS_LOCAL (local_id,horario_hora_apertura,horario_hora_cierre,horario_hora_dia)
 		SELECT DISTINCT
@@ -569,8 +552,6 @@ BEGIN
 		gd_esquema.Maestra M
 		JOIN ESECUELE.LOCAL L ON M.LOCAL_NOMBRE + M.LOCAL_DIRECCION  = L.nombre + L.direccion
 		JOIN ESECUELE.LOCALIDAD LOC ON LOC.id_localidad = L.localidad_id AND LOC.nombre = M.LOCAL_LOCALIDAD
-
-	-- Insertamos los productos de cada local --
 
 	INSERT INTO ESECUELE.PRODUCTO (local_id,codigo,nombre,descripcion,precio_unitaro)
 		SELECT DISTINCT
@@ -586,23 +567,12 @@ BEGIN
 		WHERE
 		LO.id_localidad = L.localidad_id
 
-
-END
-GO
-
-
-CREATE PROCEDURE CREAR_REPARTIDORES
-AS
-BEGIN
-
-	-- Creamos los tipos de movilidad de los repartidores --
 	INSERT INTO ESECUELE.TIPO_MOVILIDAD (nombre)
 		SELECT DISTINCT
 		M.REPARTIDOR_TIPO_MOVILIDAD
 		FROM
 		gd_esquema.Maestra M
 
-	-- Creamos los repartidores --
 	INSERT INTO ESECUELE.REPARTIDOR (nombre,apellido,dni,telefono,direccion,fecha_nac,tipo_movilidad_id,localidad_id,email)
 		SELECT DISTINCT
 		M.REPARTIDOR_NOMBRE,
@@ -612,21 +582,13 @@ BEGIN
 		M.REPARTIDOR_DIRECION,
 		M.REPARTIDOR_FECHA_NAC,
 		TM.id_tipo_movilidad,
-		NULL, -- Localidad activa es desconocida
+		NULL,
 		M.REPARTIDOR_EMAIL
 		FROM
 		gd_esquema.Maestra M
 		JOIN ESECUELE.TIPO_MOVILIDAD TM ON M.REPARTIDOR_TIPO_MOVILIDAD = TM.nombre
 
-END
-GO
-
-CREATE PROCEDURE CREAR_ENVIO_MENSAJERIA
-AS
-BEGIN
-
-	-- Creamos los estados de envio --
-	INSERT INTO ESECUELE.ESTADO_ENVIO (estado)
+	INSERT INTO ESECUELE.ESTADO_ENVIO_MENSAJERIA (estado)
 		SELECT DISTINCT
 		M.ENVIO_MENSAJERIA_ESTADO
 		FROM
@@ -634,7 +596,6 @@ BEGIN
 		WHERE
 		M.ENVIO_MENSAJERIA_ESTADO IS NOT NULL
 
-	-- Creamos los tipos de paquete --
 	INSERT INTO ESECUELE.TIPO_PAQUETE (tipo,ancho,alto,largo,peso,precio)
 		SELECT DISTINCT
 		M.PAQUETE_TIPO,
@@ -649,8 +610,6 @@ BEGIN
 		M.PAQUETE_TIPO IS NOT NULL
 
 
-
-	-- Creamos los repartidores --
 	INSERT INTO ESECUELE.ENVIO_MENSAJERIA (usuario_id,dir_origen,dir_destino,distancia_km,localidad_id,tipo_paquete_id,valor_asegurado,
 											observaciones,precio_envio,precio_seguro,repartidor_id,propina,tarjeta_id,
 											fecha_hora_entrega,fecha_hora_pedido,calificacion,total,estado_id,tiempo_estimado)
@@ -676,22 +635,15 @@ BEGIN
 		M.ENVIO_MENSAJERIA_TIEMPO_ESTIMADO
 		FROM
 		gd_esquema.Maestra M
-		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
+		JOIN ESECUELE.USUARIO U ON  M.ENVIO_MENSAJERIA_NRO IS NOT NULL AND U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = USUARIO_APELLIDO
 		JOIN ESECUELE.TARJETA T ON T.usuario_id = U.id_usuario AND T.nro_tarjeta = M.MEDIO_PAGO_NRO_TARJETA
 		JOIN ESECUELE.PROVINCIA P ON M.ENVIO_MENSAJERIA_PROVINCIA = P.nombre
 		JOIN ESECUELE.LOCALIDAD L ON M.ENVIO_MENSAJERIA_LOCALIDAD = L.nombre and L.provincia_id = P.id_provincia
 		JOIN ESECUELE.TIPO_PAQUETE TP ON M.PAQUETE_TIPO = TP.tipo
 		JOIN ESECUELE.REPARTIDOR R ON M.REPARTIDOR_DNI = R.dni
-		JOIN ESECUELE.ESTADO_ENVIO EV ON M.ENVIO_MENSAJERIA_ESTADO = EV.estado
-		WHERE
-		M.ENVIO_MENSAJERIA_NRO IS NOT NULL
-END
-GO
+		JOIN ESECUELE.ESTADO_ENVIO_MENSAJERIA EV ON M.ENVIO_MENSAJERIA_ESTADO = EV.estado
 
 
-CREATE PROCEDURE CREAR_OPERADORES
-AS
-BEGIN
 
 	INSERT INTO ESECUELE.OPERADOR (nombre,apellido,DNI,telefono,direccion,mail,fecha_nacimiento)
 		SELECT DISTINCT
@@ -707,15 +659,7 @@ BEGIN
 		WHERE
 		M.OPERADOR_RECLAMO_NOMBRE IS NOT NULL
 
-END
-GO
 
-
-CREATE PROCEDURE CREAR_PEDIDOS
-AS
-BEGIN
-
-	-- Creamos los estados de pedidos --
 	INSERT INTO ESECUELE.ESTADO_PEDIDO (estado)
 		SELECT DISTINCT
 		M.PEDIDO_ESTADO
@@ -725,7 +669,6 @@ BEGIN
 
 	SET IDENTITY_INSERT ESECUELE.PEDIDO ON
 
-	-- Creamos los pedidos --
 	INSERT INTO ESECUELE.PEDIDO (id_pedido,usuario_id,local_id,tarjeta_id,observaciones,estado_pedido_id,fecha_pedido,calificacion,total_pedido,total_cupones)
 		SELECT DISTINCT
 		M.PEDIDO_NRO,
@@ -751,10 +694,6 @@ BEGIN
 
 	SET IDENTITY_INSERT ESECUELE.PEDIDO OFF
 
-	CREATE INDEX idx_reclamos
-	ON ESECUELE.PEDIDO (id_pedido)
-
-	-- Creamos los productos para cada pedido --
 	INSERT INTO ESECUELE.PRODUCTO_PEDIDO (id_producto,nro_pedido,cantidad,precio_al_comprar,total_productos)
 		SELECT DISTINCT
 		PR.id_producto,
@@ -772,15 +711,6 @@ BEGIN
 		PR.id_producto,
 		PE.id_pedido
 
-
-END
-GO
-
-
-
-CREATE PROCEDURE CREAR_ENVIOS
-AS
-BEGIN
 
 	INSERT INTO ESECUELE.ENVIO (fecha_entrega,fecha_pedido,tiempo_estimado_entrega,direccion_usuario_id,tarifa_servicio,propina,repartidor_id,precio_envio,pedido_id)
 		SELECT DISTINCT
@@ -801,14 +731,6 @@ BEGIN
 		JOIN ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
 		WHERE M.DIRECCION_USUARIO_DIRECCION + M.DIRECCION_USUARIO_LOCALIDAD  = DU.direccion + L.nombre
 
-END
-GO
-
-
-CREATE PROCEDURE CREAR_RECLAMOS
-AS
-BEGIN
-	-- Creamos los tipos de estados de reclamo --
 	INSERT INTO ESECUELE.ESTADO_RECLAMO (M.nombre)
 		SELECT DISTINCT
 		M.RECLAMO_ESTADO
@@ -817,7 +739,6 @@ BEGIN
 		WHERE
 		M.RECLAMO_ESTADO IS NOT NULL
 
-	-- Creamos los tipos de reclamos --
 	INSERT INTO ESECUELE.TIPO_RECLAMO (tipo)
 		SELECT DISTINCT
 		M.RECLAMO_TIPO
@@ -826,12 +747,12 @@ BEGIN
 		WHERE
 		M.RECLAMO_TIPO IS NOT NULL
 
-	
 
 	SET IDENTITY_INSERT ESECUELE.RECLAMO ON
-	-- Creamos los reclamos --
+
+
 	INSERT INTO ESECUELE.RECLAMO (id_reclamo,usuario_id,pedido_id,tipo_reclamo_id,descr,fecha_hora,operador_id,estado_reclamo_id,solucion,fecha_hora_solucion,calificacion)
-	SELECT DISTINCT
+		SELECT DISTINCT
 		M.RECLAMO_NRO,
 		U.id_usuario,
 		P.id_pedido,
@@ -843,29 +764,22 @@ BEGIN
 		M.RECLAMO_SOLUCION,
 		M.RECLAMO_FECHA_SOLUCION,
 		M.RECLAMO_CALIFICACION
-	FROM
+		FROM
 		gd_esquema.Maestra M
-	JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
-	JOIN ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
-	JOIN ESECUELE.ENVIO E ON E.pedido_id = P.id_pedido
-	JOIN ESECUELE.LOCAL L ON L.id_local = P.local_id AND L.nombre = M.LOCAL_NOMBRE
-	JOIN ESECUELE.OPERADOR O ON O.DNI = M.OPERADOR_RECLAMO_DNI AND O.nombre = M.OPERADOR_RECLAMO_NOMBRE AND O.apellido = M.OPERADOR_RECLAMO_APELLIDO
-	JOIN ESECUELE.ESTADO_RECLAMO ER ON M.RECLAMO_ESTADO = ER.nombre
-	JOIN ESECUELE.TIPO_RECLAMO TR ON M.RECLAMO_TIPO = TR.tipo
-	WHERE
-	M.RECLAMO_NRO IS NOT NULL
+		JOIN ESECUELE.USUARIO U ON U.dni=M.USUARIO_DNI AND U.nombre=M.USUARIO_NOMBRE AND U.apellido = M.USUARIO_APELLIDO
+		JOIN ESECUELE.PEDIDO P ON P.id_pedido = M.PEDIDO_NRO
+		JOIN ESECUELE.ENVIO E ON E.pedido_id = P.id_pedido
+		JOIN ESECUELE.LOCAL L ON L.id_local = P.local_id AND L.nombre = M.LOCAL_NOMBRE
+		JOIN ESECUELE.OPERADOR O ON O.DNI = M.OPERADOR_RECLAMO_DNI AND O.nombre = M.OPERADOR_RECLAMO_NOMBRE AND O.apellido = M.OPERADOR_RECLAMO_APELLIDO
+		JOIN ESECUELE.ESTADO_RECLAMO ER ON M.RECLAMO_ESTADO = ER.nombre
+		JOIN ESECUELE.TIPO_RECLAMO TR ON M.RECLAMO_TIPO = TR.tipo
+		WHERE
+		M.RECLAMO_NRO IS NOT NULL
 
 	SET IDENTITY_INSERT ESECUELE.RECLAMO OFF
 
 
-END
-GO
 
-CREATE PROCEDURE CREAR_CUPONES
-AS
-BEGIN
-
-	-- Agregamos los tipos de cupones --
 	INSERT INTO ESECUELE.TIPO_CUPON (tipo)
 		SELECT DISTINCT
 		M.CUPON_TIPO
@@ -876,7 +790,7 @@ BEGIN
 
 	SET IDENTITY_INSERT ESECUELE.CUPON ON
 
-	-- Agregamos los cupones --
+
 	INSERT INTO ESECUELE.CUPON (id_cupon,fecha_alta,fecha_vencimiento,tipo_cupon_id,descuento)
 		SELECT DISTINCT
 		M.CUPON_NRO,
@@ -892,7 +806,7 @@ BEGIN
 
 		SET IDENTITY_INSERT ESECUELE.CUPON OFF
 
-	-- Agregamos los cupones de cada usuario aplicados --
+
 	INSERT INTO ESECUELE.CUPON_APLICADO
 		SELECT DISTINCT
 		C.id_cupon,
@@ -923,35 +837,11 @@ BEGIN
 		JOIN ESECUELE.CUPON C ON M.CUPON_NRO = C.id_cupon
 		JOIN ESECUELE.USUARIO U ON U.nombre + U.apellido = M.USUARIO_NOMBRE + M.USUARIO_APELLIDO AND U.dni = M.USUARIO_DNI
 
-
-END
+COMMIT
 GO
 
-EXECUTE CREAR_LOCALIDADES
-EXECUTE CREAR_USUARIOS
-EXECUTE CREAR_INDICES
-EXECUTE CREAR_LOCALES
-EXECUTE CREAR_REPARTIDORES
-EXECUTE CREAR_ENVIO_MENSAJERIA
-EXECUTE CREAR_OPERADORES
-EXECUTE CREAR_PEDIDOS
-EXECUTE CREAR_ENVIOS
-EXECUTE CREAR_RECLAMOS
-EXECUTE CREAR_CUPONES
 
-DROP PROCEDURE CREAR_LOCALIDADES
-DROP PROCEDURE CREAR_USUARIOS
-DROP PROCEDURE CREAR_INDICES
-DROP PROCEDURE CREAR_LOCALES
-DROP PROCEDURE CREAR_REPARTIDORES
-DROP PROCEDURE CREAR_ENVIO_MENSAJERIA
-DROP PROCEDURE CREAR_OPERADORES
-DROP PROCEDURE CREAR_ENVIOS
-DROP PROCEDURE CREAR_PEDIDOS
-DROP PROCEDURE CREAR_RECLAMOS
-DROP PROCEDURE CREAR_CUPONES
 DROP INDEX idx_user ON gd_esquema.Maestra;
-
+DROP INDEX idx_reclamos ON gd_esquema.Maestra;
+DROP INDEX idx_envio_nro ON gd_esquema.Maestra;
 GO
-
-

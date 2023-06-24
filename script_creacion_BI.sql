@@ -1,71 +1,40 @@
-
+USE [GD1C2023]
 
 IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'BI')
 BEGIN
-   DECLARE @sql NVARCHAR(MAX) = N'';
+    DECLARE @sql NVARCHAR(MAX) = N'';
 
+    -- Drop foreign keys
+    SELECT @sql += N'
+    ALTER TABLE [' + OBJECT_SCHEMA_NAME(fk.parent_object_id) + N'].[' + OBJECT_NAME(fk.parent_object_id) + N']
+    DROP CONSTRAINT [' + fk.name + N'];'
+    FROM sys.foreign_keys AS fk
+    JOIN sys.tables AS t ON fk.parent_object_id = t.object_id
+    WHERE SCHEMA_NAME(t.schema_id) = N'BI';
 
-	SELECT @sql += N'
-	ALTER TABLE [' + OBJECT_SCHEMA_NAME(fk.parent_object_id) + N'].[' + OBJECT_NAME(fk.parent_object_id) + N']
-	DROP CONSTRAINT [' + fk.name + N'];'
-	FROM sys.foreign_keys AS fk
-	JOIN sys.tables AS t ON fk.parent_object_id = t.object_id
-	WHERE SCHEMA_NAME(t.schema_id) = N'BI';
+    -- Drop tables
+    SELECT @sql += N'
+    DROP TABLE [' + SCHEMA_NAME(schema_id) + N'].[' + name + N'];'
+    FROM sys.tables
+    WHERE SCHEMA_NAME(schema_id) = N'BI';
 
-	SELECT @sql += N'
-	DROP TABLE [' + SCHEMA_NAME(schema_id) + N'].[' + name + N'];'
-	FROM sys.tables
-	WHERE SCHEMA_NAME(schema_id) = N'BI';
+    -- Drop views
+    SELECT @sql += N'
+    DROP VIEW [' + SCHEMA_NAME(schema_id) + N'].[' + name + N'];'
+    FROM sys.views
+    WHERE SCHEMA_NAME(schema_id) = N'BI';
 
-	SET @sql += N'DROP SCHEMA [BI];';
+    -- Drop schema
+    SET @sql += N'DROP SCHEMA [BI];';
 
-	EXEC sp_executesql @sql;
-
-	-- Drop procedure dia_y_franja_max_pedidos_localidad_categoria
-DROP PROCEDURE  dia_y_franja_max_pedidos_localidad_categoria;
-
-
--- Drop procedure sp_obtener_monto_no_cobrado_por_pedidos_cancelados
-DROP PROCEDURE  sp_obtener_monto_no_cobrado_por_pedidos_cancelados;
-
-
--- Drop procedure sp_obtener_desvio_promedio_tiempo_entrega
-DROP PROCEDURE sp_obtener_desvio_promedio_tiempo_entrega;
-
-
--- Drop procedure sp_obtener_monto_total_cupones_utilizados
-DROP PROCEDURE  sp_obtener_monto_total_cupones_utilizados;
-
--- Drop procedure sp_obtener_calificacion_mensual_local
-DROP PROCEDURE  sp_obtener_calificacion_mensual_local;
-
-
--- Drop procedure sp_obtener_pedidos_envios_entregados_mensualmente
-DROP PROCEDURE sp_obtener_pedidos_envios_entregados_mensualmente;
-
-
--- Drop procedure sp_obtener_promedio_mensual_valor_asegudaro
-DROP PROCEDURE sp_obtener_promedio_mensual_valor_asegudaro;
-
-
--- Drop procedure sp_obtener_cantidad_reclamos_mensuales
-DROP PROCEDURE sp_obtener_cantidad_reclamos_mensuales;
-
-
--- Drop procedure sp_obtener_tiempo_resolucion_reclamos
-DROP PROCEDURE sp_obtener_tiempo_resolucion_reclamos;
-
--- Drop procedure sp_obtener_monto_mensual_cupones
-DROP PROCEDURE sp_obtener_monto_mensual_cupones;
-
-
+    -- Execute the SQL
+    EXEC sp_executesql @sql;
 END
 GO
 
 
 CREATE SCHEMA [BI]
 GO
-
 CREATE TABLE BI.MES (
   id INT IDENTITY(1,1),
   año INT,
@@ -93,31 +62,16 @@ CREATE TABLE BI.RANGO_ETARIO (
   PRIMARY KEY (id)
 );
 
-CREATE TABLE BI.PROVINCIA(
-id int,
-nombre NVARCHAR(255),
-PRIMARY KEY (id)
-);
-
-CREATE TABLE BI.LOCALIDAD(
-id int,
-nombre NVARCHAR(255),
-provincia_id INT NOT NULL,
-PRIMARY KEY (id)
+CREATE TABLE BI.LOCALIDAD (
+  id INT,
+  nombre_localidad NVARCHAR(255),
+  nombre_provincia NVARCHAR(255),
+  PRIMARY KEY (id)
 );
 
 CREATE TABLE BI.TIPO_MEDIO_PAGO (
   id INT,
   tipo_medio_pago NVARCHAR(50),
-  PRIMARY KEY (id)
-);
-
-CREATE TABLE BI.LOCAL (
-  id INT,
-  nombre_local NVARCHAR(255),
-  descripcion_local NVARCHAR(255),
-  localidad_id INT,
-  categoria_local_id INT
   PRIMARY KEY (id)
 );
 
@@ -128,11 +82,23 @@ CREATE TABLE BI.TIPO_LOCAL (
 );
 
 CREATE TABLE BI.CATEGORIA_LOCAL (
-	id INT,
-	categoria_local NVARCHAR(50),
-	tipo_id INT,
-	PRIMARY KEY(id)
-)
+  id INT,
+  categoria_local NVARCHAR(50),
+  tipo_id INT,
+  PRIMARY KEY(id),
+  FOREIGN KEY (tipo_id) REFERENCES BI.TIPO_LOCAL (id)
+);
+
+CREATE TABLE BI.LOCAL (
+  id INT,
+  nombre_local NVARCHAR(255),
+  descripcion_local NVARCHAR(255),
+  localidad_id INT,
+  categoria_local_id INT,
+  PRIMARY KEY (id),
+  FOREIGN KEY (localidad_id) REFERENCES BI.LOCALIDAD (id),
+  FOREIGN KEY (categoria_local_id) REFERENCES BI.CATEGORIA_LOCAL (id)
+);
 
 CREATE TABLE BI.TIPO_MOVILIDAD (
   id INT,
@@ -143,12 +109,6 @@ CREATE TABLE BI.TIPO_MOVILIDAD (
 CREATE TABLE BI.TIPO_PAQUETE (
   id INT,
   tipo_paquete NVARCHAR(50),
-  PRIMARY KEY (id)
-);
-
-CREATE TABLE BI.ESTADO_ENVIO_PEDIDO (
-  id INT,
-  estado_pedido NVARCHAR(50),
   PRIMARY KEY (id)
 );
 
@@ -165,90 +125,111 @@ CREATE TABLE BI.ESTADO_RECLAMO (
 );
 
 CREATE TABLE BI.TIPO_RECLAMO (
-id INT,
-tipo_reclamo NVARCHAR(50),
-PRIMARY KEY (id)
-)
+  id INT,
+  tipo_reclamo NVARCHAR(50),
+  PRIMARY KEY (id)
+);
 
+CREATE TABLE BI.ESTADO_PEDIDO (
+  id INT,
+  estado_pedido NVARCHAR(50),
+  PRIMARY KEY(id)
+);
 
 CREATE TABLE BI.ESTADISTICAS_PEDIDOS (
     id INT IDENTITY(1,1),
-
     local_id INT,
-	anio_mes_id INT,
+    anio_mes_id INT,
     franja_horaria_id INT,
     dia_semana_id INT,
-	estado_pedido_id INT,
-
+    estado_pedido_id INT,
     cantidad_pedidos INT,
     valor_total DECIMAL(18,2),
-    
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    FOREIGN KEY (local_id) REFERENCES BI.LOCAL (id),
+    FOREIGN KEY (anio_mes_id) REFERENCES BI.MES (id),
+    FOREIGN KEY (franja_horaria_id) REFERENCES BI.RANGO_HORARIO (id),
+    FOREIGN KEY (dia_semana_id) REFERENCES BI.DIA (id),
+    FOREIGN KEY (estado_pedido_id) REFERENCES BI.ESTADO_PEDIDO (id)
 );
 
-CREATE TABLE BI.ESTADISTICAS_ENVIOS_PEDIDOS(
+CREATE TABLE BI.ESTADISTICAS_ENVIOS_PEDIDOS (
     id INT IDENTITY(1,1),
-
     anio_mes_id INT,
     localidad_id INT,
-
-	valor_total DECIMAL(18,2),
-    PRIMARY KEY (id)
+    valor_total DECIMAL(18,2),
+    PRIMARY KEY (id),
+    FOREIGN KEY (anio_mes_id) REFERENCES BI.MES (id),
+    FOREIGN KEY (localidad_id) REFERENCES BI.LOCALIDAD (id)
 );
 
-CREATE TABLE BI.ESTADISTICAS_ENVIOS_MENSAJERIA(
-  id INT IDENTITY(1,1),
-  
-  tipo_paquete_id INT,
-  anio_mes_id INT,
-
-  valor_promedio DECIMAL(18,2),
-  PRIMARY KEY (id)
+CREATE TABLE BI.ESTADISTICAS_ENVIOS_MENSAJERIA (
+    id INT IDENTITY(1,1),
+    tipo_paquete_id INT,
+    anio_mes_id INT,
+    valor_promedio DECIMAL(18,2),
+    PRIMARY KEY (id),
+    FOREIGN KEY (tipo_paquete_id) REFERENCES BI.TIPO_PAQUETE (id),
+    FOREIGN KEY (anio_mes_id) REFERENCES BI.MES (id)
 );
 
-CREATE TABLE BI.ESTADISTICAS_ENVIOS_TOTAL(
-  id INT IDENTITY(1,1),
- 
-  tipo_movilidad_id INT,
-  dia_semana_id INT,
-  franja_horaria_id INT,
-  rango_etario_id INT,
-  localidad_id INT,
-  
-  cantidad_envios INT,
-  desvio_tiempo DECIMAL(18,2),
-  PRIMARY KEY (id)
+CREATE TABLE BI.ESTADISTICAS_ENVIOS_TOTAL (
+    id INT IDENTITY(1,1),
+    tipo_movilidad_id INT,
+    dia_semana_id INT,
+    franja_horaria_id INT,
+    rango_etario_id INT,
+    localidad_id INT,
+    cantidad_envios INT,
+    desvio_tiempo DECIMAL(18,2),
+    PRIMARY KEY (id),
+    FOREIGN KEY (tipo_movilidad_id) REFERENCES BI.TIPO_MOVILIDAD (id),
+    FOREIGN KEY (dia_semana_id) REFERENCES BI.DIA (id),
+    FOREIGN KEY (franja_horaria_id) REFERENCES BI.RANGO_HORARIO (id),
+    FOREIGN KEY (rango_etario_id) REFERENCES BI.RANGO_ETARIO (id),
+    FOREIGN KEY (localidad_id) REFERENCES BI.LOCALIDAD (id)
 );
 
-CREATE TABLE BI.ESTADISTICAS_LOCAL(
-  id INT IDENTITY(1,1),
-
-  local_id INT,
-  mes_anio_id INT,
-  dia_semana_reclamo_id INT,
-  rango_horario_id INT,
-
-  cantidad_reclamos INT,
-  calificacion_promedio DECIMAL(18,0),
-  PRIMARY KEY (id)
+CREATE TABLE BI.ESTADISTICAS_LOCAL (
+    id INT IDENTITY(1,1),
+    local_id INT,
+    mes_anio_id INT,
+    dia_semana_reclamo_id INT,
+    rango_horario_id INT,
+    cantidad_reclamos INT,
+    calificacion_promedio DECIMAL(18,0),
+    PRIMARY KEY (id),
+    FOREIGN KEY (local_id) REFERENCES BI.LOCAL (id),
+    FOREIGN KEY (mes_anio_id) REFERENCES BI.MES (id),
+    FOREIGN KEY (dia_semana_reclamo_id) REFERENCES BI.DIA (id),
+    FOREIGN KEY (rango_horario_id) REFERENCES BI.RANGO_HORARIO (id)
 );
 
-CREATE TABLE BI.ESTADISTICAS_RECLAMOS(
-  id INT IDENTITY(1,1),
- 
-  mes_anio_id INT,
-  
-  dia_semana_id INT,
-  rango_horario_id INT,
-  tipo_reclamo_id INT,
-  rango_etario_operador_id INT,
-
-  cantidad_reclamos INT,
-  monto_mensual_cupones DECIMAL(18,2),
-  tiempo_resolucion DECIMAL(18,2),
-  PRIMARY KEY (id)
+CREATE TABLE BI.ESTADISTICAS_RECLAMOS (
+    id INT IDENTITY(1,1),
+    mes_anio_id INT,
+    dia_semana_id INT,
+    rango_horario_id INT,
+    tipo_reclamo_id INT,
+    rango_etario_operador_id INT,
+    cantidad_reclamos INT,
+    monto_mensual_cupones DECIMAL(18,2),
+    tiempo_resolucion DECIMAL(18,2),
+    PRIMARY KEY (id),
+    FOREIGN KEY (mes_anio_id) REFERENCES BI.MES (id),
+    FOREIGN KEY (dia_semana_id) REFERENCES BI.DIA (id),
+    FOREIGN KEY (rango_horario_id) REFERENCES BI.RANGO_HORARIO (id),
+    FOREIGN KEY (tipo_reclamo_id) REFERENCES BI.TIPO_RECLAMO (id),
+    FOREIGN KEY (rango_etario_operador_id) REFERENCES BI.RANGO_ETARIO (id)
 );
 
+CREATE TABLE BI.ESTADISTICAS_CUPONES (
+    id INT IDENTITY(1,1),
+    monto_total_cupones DECIMAL(18,2),
+    rango_etario_usuario_id INT,
+    PRIMARY KEY (id),
+    FOREIGN KEY (rango_etario_usuario_id) REFERENCES BI.RANGO_ETARIO (id)
+);
 
 
 
@@ -309,38 +290,6 @@ VALUES
 (20, 22),
 (22, 24);
 
-
-INSERT INTO BI.PROVINCIA(id,nombre)
-SELECT
-id_provincia,
-nombre
-FROM ESECUELE.PROVINCIA 
-
-
-INSERT INTO BI.LOCALIDAD (id,nombre,provincia_id)
-SELECT
-id_localidad,
-nombre,
-provincia_id
-FROM ESECUELE.LOCALIDAD 
-
-INSERT INTO BI.TIPO_MEDIO_PAGO (id,tipo_medio_pago)
-SELECT
-id_medio_de_pago,
-tipo
-FROM 
-ESECUELE.MEDIO_DE_PAGO;
-
-
-INSERT INTO BI.LOCAL (id, nombre_local, descripcion_local, localidad_id,categoria_local_id)
-SELECT 
-id_local, 
-nombre, 
-descripcion, 
-localidad_id,
-categoria_local_id
-FROM ESECUELE.LOCAL;
-
 INSERT INTO BI.TIPO_LOCAL (id,tipo_local)
 SELECT
 TL.id_tipo_local,
@@ -356,23 +305,23 @@ CL.tipo_local_id
 FROM ESECUELE.LOCAL L
 JOIN ESECUELE.TIPO_LOCAL TL ON L.tipo_local_id = TL.id_tipo_local
 JOIN ESECUELE.CATEGORIA_LOCAL CL ON L.categoria_local_id = CL.id_categoria_local;
-GO
 
-INSERT INTO BI.ESTADO_ENVIO_PEDIDO (id,estado_pedido)
+
+INSERT INTO BI.ESTADO_PEDIDO (id,estado_pedido)
 SELECT DISTINCT
 EP.id_estado_pedido,
 EP.estado
 FROM
 ESECUELE.ESTADO_PEDIDO EP
-GO
+
 
 INSERT INTO BI.ESTADO_ENVIO_MENSAJERIA (id,estado_envio)
 SELECT DISTINCT
 EE.id_estado_envio,
 EE.estado
 FROM
-ESECUELE.ESTADO_ENVIO EE
-GO
+ESECUELE.ESTADO_ENVIO_MENSAJERIA EE
+
 
 
 INSERT INTO BI.TIPO_MOVILIDAD (id,tipo_movilidad)
@@ -388,9 +337,10 @@ SELECT DISTINCT id_tipo_paquete, tipo
 FROM ESECUELE.TIPO_PAQUETE;
 
 INSERT INTO BI.TIPO_RECLAMO (id,tipo_reclamo)
-SELECT DISTINCT 
-*
-FROM ESECUELE.TIPO_RECLAMO
+SELECT DISTINCT
+TR.id_tipo_reclamo,
+TR.tipo
+FROM ESECUELE.TIPO_RECLAMO TR
 
 
 INSERT INTO BI.ESTADO_RECLAMO (id, estado_reclamo)
@@ -398,20 +348,46 @@ SELECT id_estado_reclamo, nombre
 FROM ESECUELE.ESTADO_RECLAMO;
 GO
 
-----
 
-CREATE FUNCTION FRANJA_HORARIA (@fecha DATETIME) 
+INSERT INTO BI.LOCALIDAD (id,nombre_localidad,nombre_provincia)
+SELECT
+id_localidad,
+L.nombre,
+P.nombre
+FROM ESECUELE.LOCALIDAD L
+JOIN ESECUELE.PROVINCIA P ON L.id_localidad = P.id_provincia
+
+INSERT INTO BI.TIPO_MEDIO_PAGO (id,tipo_medio_pago)
+SELECT
+id_medio_de_pago,
+tipo
+FROM
+ESECUELE.MEDIO_DE_PAGO;
+
+
+INSERT INTO BI.LOCAL (id, nombre_local, descripcion_local, localidad_id,categoria_local_id)
+SELECT
+id_local,
+nombre,
+descripcion,
+localidad_id,
+categoria_local_id
+FROM ESECUELE.LOCAL LO
+JOIN BI.LOCALIDAD L ON LO.localidad_id = L.id
+GO
+
+CREATE FUNCTION FRANJA_HORARIA (@fecha DATETIME)
 RETURNS INT
 AS
 
 BEGIN
 RETURN
-(SELECT 
+(SELECT
 BI.RANGO_HORARIO.id
-FROM 
+FROM
 BI.RANGO_HORARIO
 WHERE
- BI.RANGO_HORARIO.rango_horario_inicio <= DATEPART(HOUR, @fecha) 
+ BI.RANGO_HORARIO.rango_horario_inicio <= DATEPART(HOUR, @fecha)
             AND DATEPART(HOUR, @fecha) < BI.RANGO_HORARIO.rango_horario_fin
 )
 END
@@ -440,8 +416,8 @@ AS
 BEGIN
     DECLARE @mesId INT;
 
-    SELECT @mesId = id 
-    FROM BI.MES 
+    SELECT @mesId = id
+    FROM BI.MES
     WHERE año = YEAR(@fecha_hora_pedido) AND mes = MONTH(@fecha_hora_pedido);
 
     RETURN @mesId;
@@ -451,15 +427,17 @@ GO
 
 INSERT INTO BI.ESTADISTICAS_PEDIDOS(local_id,anio_mes_id, franja_horaria_id, dia_semana_id, cantidad_pedidos, valor_total,estado_pedido_id)
 SELECT
-    local_id,
+    ESECUELE.PEDIDO.local_id,
 	dbo.MES_ANIO_ID(ESECUELE.PEDIDO.fecha_pedido),
     dbo.FRANJA_HORARIA(ESECUELE.PEDIDO.fecha_pedido) AS franja_horaria_id,
     DATEPART(weekday, ESECUELE.PEDIDO.fecha_pedido) AS dia_semana_id,
-    COUNT(*) AS cantidad_envios,
+    COUNT(*) AS cantidad_pedidos,
     SUM(total_pedido - ISNULL(total_cupones, 0)) AS valor_total,
 	ESECUELE.PEDIDO.estado_pedido_id
-FROM 
+FROM
     ESECUELE.PEDIDO
+	JOIN
+	BI.LOCAL L ON ESECUELE.PEDIDO.local_id = L.id
 GROUP BY
     local_id,
     dbo.FRANJA_HORARIA(ESECUELE.PEDIDO.fecha_pedido),
@@ -470,12 +448,12 @@ ORDER BY local_id
 
 
 
-INSERT INTO BI.ESTADISTICAS_ENVIOS_PEDIDOS(valor_total, anio_mes_id, localidad_id)
+INSERT INTO BI.ESTADISTICAS_ENVIOS_PEDIDOS(anio_mes_id,localidad_id,valor_total)
 SELECT
-    SUM(P.total_pedido + E.tarifa_servicio + E.propina - ISNULL(P.total_cupones, 0)) AS valor_total,
     M.id,
-	LI.id
-FROM 
+	LI.id,
+    SUM(P.total_pedido + E.tarifa_servicio + E.propina - ISNULL(P.total_cupones, 0)) AS valor_total
+FROM
     ESECUELE.PEDIDO AS P
     JOIN ESECUELE.ENVIO AS E ON P.id_pedido = E.pedido_id
     JOIN BI.MES AS M ON YEAR(P.fecha_pedido) = M.año AND MONTH(P.fecha_pedido) = M.mes
@@ -487,13 +465,13 @@ LI.id
 
 
 INSERT INTO BI.ESTADISTICAS_ENVIOS_MENSAJERIA(valor_promedio, tipo_paquete_id, anio_mes_id)
-SELECT 
+SELECT
   AVG(total) AS valor_promedio,
   tipo_paquete_id,
   dbo.MES_ANIO_ID(fecha_hora_pedido)
 FROM ESECUELE.ENVIO_MENSAJERIA
-GROUP BY 
-tipo_paquete_id, 
+GROUP BY
+tipo_paquete_id,
 dbo.MES_ANIO_ID(fecha_hora_pedido)
 GO
 
@@ -501,7 +479,7 @@ GO
 
 
 INSERT INTO BI.ESTADISTICAS_ENVIOS_TOTAL(tipo_movilidad_id,cantidad_envios, dia_semana_id, franja_horaria_id, desvio_tiempo, rango_etario_id, localidad_id)
-SELECT 
+SELECT
     id_tipo_movilidad,
 	COUNT(*),
     DAY,
@@ -511,7 +489,7 @@ SELECT
     LOCALIDAD
 FROM
     (
-    SELECT 
+    SELECT
         TM.id_tipo_movilidad,
         DATEPART(weekday,E.fecha_pedido) AS DAY,
         dbo.FRANJA_HORARIA(E.fecha_pedido) AS FRANJA,
@@ -525,8 +503,9 @@ FROM
         JOIN ESECUELE.DIRECCION_USUARIO DU  ON DU.id_direccion_usuario = E.direccion_usuario_id
         JOIN ESECUELE.LOCALIDAD L ON L.id_localidad = DU.localidad_id
         JOIN ESECUELE.TIPO_MOVILIDAD TM ON TM.id_tipo_movilidad = R.tipo_movilidad_id
+		JOIN BI.LOCALIDAD LI ON LI.id = L.id_localidad
     UNION ALL
-    SELECT 
+    SELECT
         TM.id_tipo_movilidad,
         DATEPART(weekday,EM.fecha_hora_pedido) AS DAY,
         dbo.FRANJA_HORARIA(EM.fecha_hora_pedido) AS FRANJA,
@@ -538,8 +517,9 @@ FROM
         JOIN ESECUELE.REPARTIDOR R ON R.id_repartidor = EM.repartidor_id
         JOIN ESECUELE.LOCALIDAD L ON L.id_localidad = EM.localidad_id
         JOIN ESECUELE.TIPO_MOVILIDAD TM ON TM.id_tipo_movilidad = R.tipo_movilidad_id
+		JOIN BI.LOCALIDAD LI ON LI.id = L.id_localidad
     ) AS UnionQuery
-GROUP BY 
+GROUP BY
     id_tipo_movilidad,
     DAY,
     FRANJA,
@@ -588,12 +568,60 @@ INSERT INTO BI.ESTADISTICAS_RECLAMOS(cantidad_reclamos,monto_mensual_cupones,mes
 	dbo.RANGO_ETARIO(O.fecha_nacimiento)
 GO
 
+INSERT INTO BI.ESTADISTICAS_CUPONES
+	SELECT
+	SUM(C.descuento),
+	dbo.RANGO_ETARIO(U.fecha_nac)
+	FROM
+	ESECUELE.CUPON C
+	JOIN ESECUELE.CUPON_USUARIO CU ON C.id_cupon = CU.cupon_id
+	JOIN ESECUELE.USUARIO U ON U.id_usuario = CU.usuario_id
+	GROUP BY
+	dbo.RANGO_ETARIO(U.fecha_nac)
+GO
+
 DROP FUNCTION dbo.FRANJA_HORARIA
 DROP FUNCTION dbo.RANGO_ETARIO
 DROP FUNCTION dbo.MES_ANIO_ID
 GO
 
-CREATE VIEW v_desvio_promedio_tiempo_entrega AS
+
+CREATE VIEW BI.monto_total_no_cobrado AS
+SELECT
+SUM(EP.valor_total) as valor_total_no_cobrado,
+D.dia_de_semana as dia,
+rango_horario_inicio,
+rango_horario_fin
+FROM
+BI.ESTADISTICAS_PEDIDOS EP
+JOIN
+BI.ESTADO_PEDIDO EEP ON EEP.id = EP.estado_pedido_id
+JOIN
+BI.DIA D ON D.id = EP.dia_semana_id
+JOIN
+BI.RANGO_HORARIO RH ON RH.id = EP.franja_horaria_id
+GROUP BY
+D.dia_de_semana,
+rango_horario_inicio,
+rango_horario_fin,
+EEP.estado_pedido
+HAVING
+EEP.estado_pedido = 'Estado Mensajeria Cancelado'
+GO
+
+CREATE VIEW BI.valor_promedio_mensual AS
+SELECT
+AVG(EEP.valor_total) as valor_promedio_mensual,
+L.nombre_localidad as localidad
+FROM
+BI.ESTADISTICAS_ENVIOS_PEDIDOS EEP
+JOIN
+BI.LOCALIDAD L ON L.id = EEP.localidad_id
+GROUP BY
+L.nombre_localidad
+GO
+
+CREATE VIEW BI.desvio_promedio_tiempo_entrega AS
 SELECT
 AVG(EET.desvio_tiempo) as desvio_tiempo,
 D.dia_de_semana dia_semana,
@@ -616,7 +644,7 @@ RH.rango_horario_inicio ,
 RH.rango_horario_fin;
 GO
 
-CREATE VIEW v_monto_total_cupones_utilizados AS
+CREATE VIEW BI.monto_total_cupones_utilizados AS
 SELECT
 EC.monto_total_cupones as monto_total,
 RE.rango_etario_inicio as rango_etario_comienzo,
@@ -627,7 +655,7 @@ JOIN
 BI.RANGO_ETARIO RE ON RE.id = EC.rango_etario_usuario_id;
 GO
 
-CREATE VIEW v_calificacion_mensual_local AS
+CREATE VIEW BI.calificacion_mensual_local AS
 SELECT
 EL.local_id,
 AVG(EL.calificacion_promedio) as calificacion_promedio
@@ -638,13 +666,12 @@ EL.mes_anio_id,
 EL.local_id;
 GO
 
--- For this one, I made the assumption that @total_envios can be replaced with its value directly in the view.
-CREATE VIEW v_pedidos_envios_entregados_mensualmente AS
+CREATE VIEW BI.pedidos_envios_entregados_mensualmente AS
 SELECT
 SUM(EET.cantidad_envios) OVER (PARTITION BY EET.localidad_id, EET.rango_etario_id) / (SELECT SUM(EET2.cantidad_envios) FROM BI.ESTADISTICAS_ENVIOS_TOTAL EET2) as porcentage_envios,
 RE.rango_etario_inicio as rango_etario_repartidor_comienzo,
 RE.rango_etario_fin as rango_etario_repartidor_fin,
-L.nombre as localidad
+L.nombre_localidad as localidad
 FROM
 BI.ESTADISTICAS_ENVIOS_TOTAL EET
 JOIN
@@ -653,7 +680,7 @@ JOIN
 BI.LOCALIDAD L ON L.id = EET.localidad_id;
 GO
 
-CREATE VIEW v_promedio_mensual_valor_asegudaro AS
+CREATE VIEW BI.promedio_mensual_valor_asegudaro AS
 SELECT
 valor_promedio as valor_promedio,
 TP.tipo_paquete as tipo_paquete,
@@ -667,7 +694,7 @@ JOIN
 BI.MES M ON M.id = EEM.anio_mes_id;
 GO
 
-CREATE VIEW v_cantidad_reclamos_mensuales AS
+CREATE VIEW BI.cantidad_reclamos_mensuales AS
 SELECT
 L.nombre_local,
 SUM(EL.cantidad_reclamos) as cant_reclamos,
@@ -690,7 +717,7 @@ RH.rango_horario_inicio,
 RH.rango_horario_fin;
 GO
 
-CREATE VIEW v_tiempo_resolucion_reclamos AS
+CREATE VIEW BI.tiempo_resolucion_reclamos AS
 SELECT
 AVG(ER.tiempo_resolucion) as tiempo_resolucion_promedio,
 TR.tipo_reclamo,
@@ -706,11 +733,9 @@ GROUP BY
 TR.tipo_reclamo,
 RE.rango_etario_inicio,
 RE.rango_etario_fin
-ORDER BY
-RE.rango_etario_inicio;
 GO
 
-CREATE VIEW v_monto_mensual_cupones AS
+CREATE VIEW BI.monto_mensual_cupones AS
 SELECT
 SUM(ER.monto_mensual_cupones) as monto_mensual_cupones,
 M.año,
@@ -722,6 +747,7 @@ BI.MES M ON M.id = ER.mes_anio_id
 GROUP BY
 M.año,M.mes;
 GO
+
 
 
 
