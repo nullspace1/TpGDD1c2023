@@ -69,11 +69,7 @@ CREATE TABLE BI.LOCALIDAD (
   PRIMARY KEY (id)
 );
 
-CREATE TABLE BI.TIPO_MEDIO_PAGO (
-  id INT,
-  tipo_medio_pago NVARCHAR(50),
-  PRIMARY KEY (id)
-);
+
 
 CREATE TABLE BI.TIPO_LOCAL (
   id INT,
@@ -112,17 +108,6 @@ CREATE TABLE BI.TIPO_PAQUETE (
   PRIMARY KEY (id)
 );
 
-CREATE TABLE BI.ESTADO_ENVIO_MENSAJERIA (
-  id INT,
-  estado_envio NVARCHAR(50),
-  PRIMARY KEY (id)
-);
-
-CREATE TABLE BI.ESTADO_RECLAMO (
-  id INT,
-  estado_reclamo NVARCHAR(50),
-  PRIMARY KEY (id)
-);
 
 CREATE TABLE BI.TIPO_RECLAMO (
   id INT,
@@ -315,15 +300,6 @@ FROM
 ESECUELE.ESTADO_PEDIDO EP
 
 
-INSERT INTO BI.ESTADO_ENVIO_MENSAJERIA (id,estado_envio)
-SELECT DISTINCT
-EE.id_estado_envio,
-EE.estado
-FROM
-ESECUELE.ESTADO_ENVIO_MENSAJERIA EE
-
-
-
 INSERT INTO BI.TIPO_MOVILIDAD (id,tipo_movilidad)
 SELECT DISTINCT
 id_tipo_movilidad,
@@ -343,10 +319,6 @@ TR.tipo
 FROM ESECUELE.TIPO_RECLAMO TR
 
 
-INSERT INTO BI.ESTADO_RECLAMO (id, estado_reclamo)
-SELECT id_estado_reclamo, nombre
-FROM ESECUELE.ESTADO_RECLAMO;
-GO
 
 
 INSERT INTO BI.LOCALIDAD (id,nombre_localidad,nombre_provincia)
@@ -357,12 +329,7 @@ P.nombre
 FROM ESECUELE.LOCALIDAD L
 JOIN ESECUELE.PROVINCIA P ON L.id_localidad = P.id_provincia
 
-INSERT INTO BI.TIPO_MEDIO_PAGO (id,tipo_medio_pago)
-SELECT
-id_medio_de_pago,
-tipo
-FROM
-ESECUELE.MEDIO_DE_PAGO;
+
 
 
 INSERT INTO BI.LOCAL (id, nombre_local, descripcion_local, localidad_id,categoria_local_id)
@@ -424,10 +391,9 @@ BEGIN
 END;
 GO
 
-
 INSERT INTO BI.ESTADISTICAS_PEDIDOS(local_id,anio_mes_id, franja_horaria_id, dia_semana_id, cantidad_pedidos, valor_total,estado_pedido_id)
 SELECT
-    ESECUELE.PEDIDO.local_id,
+    L.id,
 	dbo.MES_ANIO_ID(ESECUELE.PEDIDO.fecha_pedido),
     dbo.FRANJA_HORARIA(ESECUELE.PEDIDO.fecha_pedido) AS franja_horaria_id,
     DATEPART(weekday, ESECUELE.PEDIDO.fecha_pedido) AS dia_semana_id,
@@ -437,14 +403,13 @@ SELECT
 FROM
     ESECUELE.PEDIDO
 	JOIN
-	BI.LOCAL L ON ESECUELE.PEDIDO.local_id = L.id
+	BI.LOCAL L ON L.id = ESECUELE.PEDIDO.local_id
 GROUP BY
-    local_id,
+    L.id,
     dbo.FRANJA_HORARIA(ESECUELE.PEDIDO.fecha_pedido),
     DATEPART(weekday, ESECUELE.PEDIDO.fecha_pedido),
     estado_pedido_id,
 	dbo.MES_ANIO_ID(ESECUELE.PEDIDO.fecha_pedido)
-ORDER BY local_id
 
 
 
@@ -476,8 +441,6 @@ dbo.MES_ANIO_ID(fecha_hora_pedido)
 GO
 
 
-
-
 INSERT INTO BI.ESTADISTICAS_ENVIOS_TOTAL(tipo_movilidad_id,cantidad_envios, dia_semana_id, franja_horaria_id, desvio_tiempo, rango_etario_id, localidad_id)
 SELECT
     id_tipo_movilidad,
@@ -498,12 +461,12 @@ FROM
         L.id_localidad AS LOCALIDAD
     FROM
         ESECUELE.ENVIO E
-		JOIN ESECUELE.PEDIDO P ON P.id_pedido = E.pedido_id
+		    JOIN ESECUELE.PEDIDO P ON P.id_pedido = E.pedido_id
         JOIN ESECUELE.REPARTIDOR R ON R.id_repartidor = E.repartidor_id
         JOIN ESECUELE.DIRECCION_USUARIO DU  ON DU.id_direccion_usuario = E.direccion_usuario_id
         JOIN ESECUELE.LOCALIDAD L ON L.id_localidad = DU.localidad_id
         JOIN ESECUELE.TIPO_MOVILIDAD TM ON TM.id_tipo_movilidad = R.tipo_movilidad_id
-		JOIN BI.LOCALIDAD LI ON LI.id = L.id_localidad
+		    JOIN BI.LOCALIDAD LI ON LI.id = L.id_localidad
     UNION ALL
     SELECT
         TM.id_tipo_movilidad,
@@ -518,6 +481,9 @@ FROM
         JOIN ESECUELE.LOCALIDAD L ON L.id_localidad = EM.localidad_id
         JOIN ESECUELE.TIPO_MOVILIDAD TM ON TM.id_tipo_movilidad = R.tipo_movilidad_id
 		JOIN BI.LOCALIDAD LI ON LI.id = L.id_localidad
+        JOIN ESECUELE.ESTADO_ENVIO_MENSAJERIA EEM ON EM.estado_id = EEM.id_estado_envio
+    WHERE
+        EEM.estado = 'Estado Mensajeria Entregado'
     ) AS UnionQuery
 GROUP BY
     id_tipo_movilidad,
@@ -585,6 +551,64 @@ DROP FUNCTION dbo.RANGO_ETARIO
 DROP FUNCTION dbo.MES_ANIO_ID
 GO
 
+CREATE VIEW BI.dia_franja_con_mayor_pedidos AS
+WITH RankingOrdenes AS (
+    SELECT
+        D2.dia_de_semana,
+		RH2.rango_horario_inicio,
+		RH2.rango_horario_fin,
+        L2.localidad_id,
+        L2.categoria_local_id,
+        EP2.anio_mes_id,
+        RANK() OVER (PARTITION BY L2.localidad_id, L2.categoria_local_id, EP2.anio_mes_id ORDER BY SUM(ISNULL(EP2.cantidad_pedidos, 0)) DESC) as rank
+    FROM
+        BI.ESTADISTICAS_PEDIDOS EP2
+        JOIN BI.LOCAL L2 ON L2.id = EP2.local_id
+        JOIN BI.DIA D2 ON D2.id = EP2.dia_semana_id
+        JOIN BI.RANGO_HORARIO RH2 ON RH2.id = EP2.franja_horaria_id
+		JOIN BI.LOCALIDAD LO2 ON LO2.id = L2.localidad_id
+		JOIN BI.MES M2 ON M2.id = EP2.anio_mes_id
+		JOIN BI.CATEGORIA_LOCAL C ON C.id = L2.categoria_local_id
+	GROUP BY
+	D2.dia_de_semana,
+    RH2.rango_horario_inicio,
+    RH2.rango_horario_fin,
+    L2.localidad_id,
+    L2.categoria_local_id,
+    EP2.anio_mes_id
+)
+SELECT
+    RO.dia_de_semana,
+	RO.rango_horario_inicio,
+	RO.rango_horario_fin,
+    LO.nombre_localidad,
+    C.categoria_local,
+    M.mes,
+    M.año
+FROM
+    BI.ESTADISTICAS_PEDIDOS EP
+    JOIN BI.LOCAL L ON L.id = EP.local_id
+    JOIN BI.LOCALIDAD LO ON LO.id = L.localidad_id
+    JOIN BI.RANGO_HORARIO RH ON RH.id = EP.franja_horaria_id
+    JOIN BI.MES M ON M.id = EP.anio_mes_id
+    JOIN BI.DIA D ON D.id = EP.dia_semana_id
+    JOIN BI.CATEGORIA_LOCAL C ON C.id = L.categoria_local_id
+    JOIN RankingOrdenes RO ON RO.localidad_id = L.localidad_id
+                                AND RO.categoria_local_id = L.categoria_local_id
+                                AND RO.anio_mes_id = EP.anio_mes_id
+                                AND RO.rank = 1
+GROUP BY
+    LO.nombre_localidad,
+    C.categoria_local,
+    M.mes,
+    M.año,
+    L.categoria_local_id,
+    L.localidad_id,
+    EP.anio_mes_id,
+    RO.dia_de_semana,
+	RO.rango_horario_inicio,
+	RO.rango_horario_fin
+GO
 
 CREATE VIEW BI.monto_total_no_cobrado AS
 SELECT
@@ -680,7 +704,7 @@ JOIN
 BI.LOCALIDAD L ON L.id = EET.localidad_id;
 GO
 
-CREATE VIEW BI.promedio_mensual_valor_asegudaro AS
+CREATE VIEW BI.promedio_mensual_valor_asegurado AS
 SELECT
 valor_promedio as valor_promedio,
 TP.tipo_paquete as tipo_paquete,
@@ -735,7 +759,7 @@ RE.rango_etario_inicio,
 RE.rango_etario_fin
 GO
 
-CREATE VIEW BI.monto_mensual_cupones AS
+CREATE VIEW BI.monto_mensual_cupones_reclamos AS
 SELECT
 SUM(ER.monto_mensual_cupones) as monto_mensual_cupones,
 M.año,
