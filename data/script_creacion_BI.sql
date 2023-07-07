@@ -107,6 +107,7 @@ CREATE TABLE BI.DIMENSION_ESTADO_PEDIDO (
   PRIMARY KEY(id)
 );
 
+
 CREATE TABLE BI.HECHOS_PEDIDOS (
     id INT IDENTITY(1,1),
 
@@ -117,7 +118,7 @@ CREATE TABLE BI.HECHOS_PEDIDOS (
     franja_horaria_id INT,
     dia_semana_id INT,
 	estado_pedido_id INT,
-	
+
 
     cantidad_pedidos INT,
 	valor_total DECIMAL(18,2),
@@ -209,7 +210,7 @@ CREATE TABLE BI.HECHOS_CUPONES (
 	mes_anio_id INT,
 
     monto_total_cupones DECIMAL(18,2),
-    
+
     PRIMARY KEY (id),
     FOREIGN KEY (rango_etario_usuario_id) REFERENCES BI.DIMENSION_RANGO_ETARIO (id),
 	FOREIGN KEY (mes_anio_id) REFERENCES BI.DIMENSION_MES (id)
@@ -474,7 +475,7 @@ FROM
 		JOIN BI.DIMENSION_LOCALIDAD LI ON LI.id = L.id_localidad
 		JOIN ESECUELE.ESTADO_PEDIDO EP ON EP.id_estado_pedido = P.estado_pedido_id
 	WHERE
-		EP.estado = 'Estado Mensajeria Cancelado'
+		EP.estado = 'Estado Mensajeria Entregado'
     UNION ALL
     SELECT
         TM.id_tipo_movilidad,
@@ -556,38 +557,55 @@ localidad y categoría del local, para cada mes de cada año.
 */
 
 CREATE VIEW BI.dia_franja_horaria_con_mayor_pedidos AS
-WITH RankingOrdenes AS (
-    SELECT
-        EP2.anio_mes_id,
-		EP2.localidad_id,
-		EP2.tipo_categoria_local_id,
-        RANK() OVER (PARTITION BY EP2.localidad_id, EP2.tipo_categoria_local_id, EP2.anio_mes_id ORDER BY SUM(ISNULL(EP2.cantidad_pedidos, 0)) DESC) as rank
-    FROM
-        BI.HECHOS_PEDIDOS EP2
-		GROUP BY
-		EP2.anio_mes_id,
-		EP2.localidad_id,
-		EP2.tipo_categoria_local_id
-)
 SELECT
     D.dia_de_semana,
-	RH.rango_horario_inicio,
-	RH.rango_horario_fin,
+    RH.rango_horario_inicio,
+    RH.rango_horario_fin,
     LI.nombre_localidad,
-	LI.nombre_provincia,
+    LI.nombre_provincia,
     CTL.categoria_local,
-	CTL.tipo_local,
+    CTL.tipo_local,
     M.mes,
     M.año
 FROM
     BI.HECHOS_PEDIDOS EP
-	JOIN RankingOrdenes RO ON RO.localidad_id = EP.localidad_id AND RO.anio_mes_id = EP.anio_mes_id AND RO.tipo_categoria_local_id = EP.tipo_categoria_local_id AND RO.rank = 1
-	JOIN BI.DIMENSION_DIA D ON D.id = EP.dia_semana_id
-	JOIN BI.DIMENSION_RANGO_HORARIO RH ON RH.id = EP.franja_horaria_id
-	JOIN BI.DIMENSION_LOCALIDAD LI ON LI.id = EP.localidad_id
-	JOIN BI.DIMENSION_CATEGORIA_TIPO_LOCAL CTL ON CTL.id = EP.tipo_categoria_local_id
-	JOIN BI.DIMENSION_MES M ON M.id = EP.anio_mes_id		                          
+    JOIN BI.DIMENSION_DIA D ON D.id = EP.dia_semana_id
+    JOIN BI.DIMENSION_RANGO_HORARIO RH ON RH.id = EP.franja_horaria_id
+    JOIN BI.DIMENSION_LOCALIDAD LI ON LI.id = EP.localidad_id
+    JOIN BI.DIMENSION_CATEGORIA_TIPO_LOCAL CTL ON CTL.id = EP.tipo_categoria_local_id
+    JOIN BI.DIMENSION_MES M ON M.id = EP.anio_mes_id
+GROUP BY
+    D.dia_de_semana,
+    RH.rango_horario_inicio,
+    RH.rango_horario_fin,
+    LI.nombre_localidad,
+    LI.nombre_provincia,
+    CTL.categoria_local,
+    CTL.tipo_local,
+    M.mes,
+    M.año,
+    EP.localidad_id,
+    EP.tipo_categoria_local_id,
+    EP.anio_mes_id
+	HAVING
+    NOT EXISTS (
+        SELECT 1
+        FROM BI.HECHOS_PEDIDOS EP2
+        WHERE
+		EP2.localidad_id = EP.localidad_id
+        AND EP2.tipo_categoria_local_id = EP.tipo_categoria_local_id
+        AND EP2.anio_mes_id = EP.anio_mes_id
+        GROUP BY
+            EP2.anio_mes_id,
+            EP2.localidad_id,
+            EP2.tipo_categoria_local_id,
+			EP2.franja_horaria_id,
+			EP2.dia_semana_id
+			HAVING
+			SUM(ISNULL(EP2.cantidad_pedidos, 0)) > SUM(ISNULL(EP.cantidad_pedidos, 0))
+    )
 GO
+
 
 
 
